@@ -17,6 +17,9 @@ class ElevenLabs_TTS_Content_Filter {
      * @return string Filtered content
      */
     public static function filter_content($content) {
+        // Remove References section first (before other processing)
+        $content = self::remove_references_section($content);
+
         // Remove shortcodes
         $content = strip_shortcodes($content);
 
@@ -86,6 +89,9 @@ class ElevenLabs_TTS_Content_Filter {
 
         // Decode HTML entities
         $content = html_entity_decode($content, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // Apply watch-specific terminology fixes
+        $content = self::apply_watch_terminology_fixes($content);
 
         // Clean up whitespace
         $content = preg_replace('/\s+/', ' ', $content);
@@ -170,5 +176,102 @@ class ElevenLabs_TTS_Content_Filter {
      */
     public static function count_characters($text) {
         return strlen($text);
+    }
+
+    /**
+     * Remove References section from content
+     * Removes everything after a heading containing "References"
+     *
+     * @param string $content HTML content
+     * @return string Content without References section
+     */
+    private static function remove_references_section($content) {
+        // Look for References heading (h2, h3, h4) and remove everything after it
+        // This needs to be done before HTML is stripped
+        $patterns = array(
+            '/<h[2-4][^>]*>\s*References\s*<\/h[2-4]>.*$/is',  // Exact match
+            '/<h[2-4][^>]*>[^<]*References[^<]*<\/h[2-4]>.*$/is'  // Contains "References"
+        );
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $content)) {
+                $content = preg_replace($pattern, '', $content);
+                break;
+            }
+        }
+
+        return $content;
+    }
+
+    /**
+     * Apply watch-specific terminology fixes for better pronunciation
+     *
+     * @param string $content Plain text content (after HTML removal)
+     * @return string Content with pronunciation fixes applied
+     */
+    private static function apply_watch_terminology_fixes($content) {
+        // Define replacements array with patterns and their spoken equivalents
+        $replacements = array(
+            // Brand names
+            '/\bPanerai\b/i' => 'pah-neh-RYE',
+
+            // Common watch terms
+            '/\bmare nostrum\b/i' => 'mah-ray nos-trum',
+            '/\bRef\.\s*/i' => 'Reference ',
+            '/\bETA\b/' => 'eeta',  // Like "Etta" James
+
+            // Material codes
+            '/\bAISI\s*316L\b/i' => 'A I S I three one six L',
+
+            // PAM model numbers (e.g., PAM00716 → PAM oh oh seven one six)
+            '/\bPAM(\d)(\d)(\d)(\d)(\d)\b/' => function($matches) {
+                $digits = array('oh', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine');
+                $spoken = 'PAM ';
+                for ($i = 1; $i <= 5; $i++) {
+                    $digit = (int)$matches[$i];
+                    $spoken .= $digits[$digit] . ' ';
+                }
+                return trim($spoken);
+            },
+
+            // Measurements with mm (e.g., 42mm or 42 mm → forty-two millimeters)
+            '/\b(\d+)\s*mm\b/i' => '$1 millimeters',
+
+            // Roman numerals in caliber names (e.g., OP XXXIII → O P thirty-three)
+            '/\b(OP|Calibre|Caliber)\s+([A-Z]{1,3})\s+(X{0,3})(IX|IV|V?I{0,3})\b/i' => function($matches) {
+                $prefix = $matches[1];
+                $letters = $matches[2];
+                $roman = $matches[3] . $matches[4];
+
+                // Convert letters to individual spoken letters
+                $spoken_letters = implode(' ', str_split($letters));
+
+                // Convert Roman numerals to number
+                $roman_values = array('M' => 1000, 'CM' => 900, 'D' => 500, 'CD' => 400,
+                                     'C' => 100, 'XC' => 90, 'L' => 50, 'XL' => 40,
+                                     'X' => 10, 'IX' => 9, 'V' => 5, 'IV' => 4, 'I' => 1);
+                $number = 0;
+                $roman = strtoupper($roman);
+                foreach ($roman_values as $key => $value) {
+                    while (strpos($roman, $key) === 0) {
+                        $number += $value;
+                        $roman = substr($roman, strlen($key));
+                    }
+                }
+
+                return $prefix . ' ' . $spoken_letters . ' ' . $number;
+            }
+        );
+
+        // Apply all replacements
+        foreach ($replacements as $pattern => $replacement) {
+            if (is_callable($replacement)) {
+                $content = preg_replace_callback($pattern, $replacement, $content);
+            } else {
+                $content = preg_replace($pattern, $replacement, $content);
+            }
+        }
+
+        return $content;
     }
 }
