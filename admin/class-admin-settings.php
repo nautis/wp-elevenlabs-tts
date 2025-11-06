@@ -402,15 +402,13 @@ class ElevenLabs_TTS_Admin_Settings {
      */
     public function render_player_position_field() {
         $settings = get_option('elevenlabs_tts_settings');
-        $position = isset($settings['player_position']) ? $settings['player_position'] : 'after_title';
+        $position = isset($settings['player_position']) ? $settings['player_position'] : 'before_content';
         ?>
         <select name="elevenlabs_tts_settings[player_position]" id="elevenlabs_player_position" class="regular-text">
-            <option value="after_title" <?php selected($position, 'after_title'); ?>>After Post Title</option>
             <option value="before_content" <?php selected($position, 'before_content'); ?>>Before Content</option>
             <option value="after_content" <?php selected($position, 'after_content'); ?>>After Content</option>
-            <option value="manual" <?php selected($position, 'manual'); ?>>Manual (use shortcode)</option>
         </select>
-        <p class="description">Choose where the audio player should appear on posts</p>
+        <p class="description">Position relative to the post content. Note: Title, featured image, author, and excerpt are controlled by your theme and appear before the content area.</p>
         <?php
     }
 

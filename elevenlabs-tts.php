@@ -94,7 +94,7 @@ class ElevenLabs_TTS {
                 'voice_id' => '',
                 'model_id' => 'eleven_multilingual_v2',
                 'auto_generate' => false,
-                'player_position' => 'after_title'
+                'player_position' => 'before_content'
             ));
         }
     }
@@ -157,8 +157,18 @@ class ElevenLabs_TTS {
 
         $player_html .= '</div>';
 
-        // Inject after the opening content div
-        return $player_html . $content;
+        // Get player position setting
+        $settings = get_option('elevenlabs_tts_settings');
+        $position = isset($settings['player_position']) ? $settings['player_position'] : 'before_content';
+
+        // Inject based on position setting
+        switch ($position) {
+            case 'after_content':
+                return $content . $player_html;
+            case 'before_content':
+            default:
+                return $player_html . $content;
+        }
     }
 
     /**
