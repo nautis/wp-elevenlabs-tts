@@ -32,9 +32,9 @@
                         // Show success message
                         showMessage($container, 'Audio generated successfully! Reloading page...', 'success');
 
-                        // Reload page after 1 second
+                        // Reload page after 1 second with cache busting
                         setTimeout(function() {
-                            location.reload();
+                            location.href = location.href.split('?')[0] + '?t=' + Date.now();
                         }, 1000);
                     } else {
                         // Show error message
@@ -94,9 +94,9 @@
                         // Show success message
                         showMessage($container, 'Audio regenerated successfully! Reloading page...', 'success');
 
-                        // Reload page after 1 second
+                        // Reload page after 1 second with cache busting
                         setTimeout(function() {
-                            location.reload();
+                            location.href = location.href.split('?')[0] + '?t=' + Date.now();
                         }, 1000);
                     } else {
                         // Show error message
