@@ -87,6 +87,7 @@
                 data: {
                     action: 'elevenlabs_generate_audio',
                     post_id: postId,
+                    force: true,
                     nonce: elevenlabsData.nonce
                 },
                 success: function(response) {
