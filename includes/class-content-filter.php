@@ -212,12 +212,80 @@ class ElevenLabs_TTS_Content_Filter {
     private static function apply_watch_terminology_fixes($content) {
         // Define replacements array with patterns and their spoken equivalents
         $replacements = array(
-            // Brand names
+            // Brand names (alphabetical order)
+            '/\bA\.\s*Lange\s*&\s*S(ö|o)hne\b/i' => 'AH Lung-Geh Oohnt Sew-neh',
+            '/\bAudemars\s+Piguet\b/i' => 'OH-duh-MAHR PEA-GAY',
+            '/\bBaume\s*&\s*Mercier\b/i' => 'bohm AY mer-SEE-AY',
+            '/\bBlancpain\b/i' => 'blau-PAN',
+            '/\bBovet\b/i' => 'Boo-vay',
+            '/\bBreguet\b/i' => 'BREH gay',
+            '/\bBreitling\b/i' => 'Bright-ling',
+            '/\bBremont\b/i' => 'BRAY-mon',
+            '/\bBulgari\b/i' => 'bull-gar-EE',
+            '/\bCarl\s*F\.?\s*B(u|ü)cherer\b/i' => 'Carl F BOOK-er-er',
+            '/\bCartier\b/i' => 'Ka tee ay',
+            '/\bChopard\b/i' => 'Show-PAHR',
+            '/\bCuervo\s+y\s+Sobrinos\b/i' => 'KWER vo ee so BREE nohs',
+            '/\bCustos\b/i' => 'COO stohs',
+            '/\bCyma\b/i' => 'SEE muh',
+            '/\bDaniel\s+Roth\b/i' => 'Daniel ROTE',
+            '/\bDe\s+Bethune\b/i' => 'deh bet OON',
+            '/\bDeWitt\b/i' => 'deh VITT',
+            '/\bDoxa\b/i' => 'DOX uh',
+            '/\bDubey\s*&\s*Schaldenbrand\b/i' => 'due bay and SHALL den brand',
+            '/\bEbel\b/i' => 'ee BELL',
+            '/\bF\.?\s*P\.?\s*Journe\b/i' => 'EFF-pay ZHOORN',
+            '/\bFavre-Leuba\b/i' => 'FAHV LUBE uh',
+            '/\bFr(é|e)d(é|e)rique\s+Constant\b/i' => 'FRED ur eek con STAHNT',
+            '/\bFranck\s+Muller\b/i' => 'Fronk MEW-ler',
+            '/\bG(é|e)rald\s+Charles\b/i' => 'Zher-rahld Sharl',
+            '/\bG(é|e)rald\s+Genta\b/i' => 'Zher-rahld ZHEN-ta',
+            '/\bGirard-Perregaux\b/i' => 'zhee-RAHRD pehr-uh-GO',
+            '/\bGlash(ü|u)tte\b/i' => 'GLAHS-hoot-uh',
+            '/\bGlycine\b/i' => 'GLY seen',
+            '/\bGreubel\s+Forsey\b/i' => 'GROIB uhl FORCE ee',
+            '/\bH\.\s*Moser\s*&\s*Cie\b/i' => 'Mozer aye say',
+            '/\bHublot\b/i' => 'OOH-blow',
+            '/\bIWC\s+Schaffhausen\b/i' => 'EYE-DOUBLE-YOU-SEE shaff HOWZ in',
+            '/\bIWC\b/' => 'EYE-DOUBLE-YOU-SEE',
+            '/\bJaeger-LeCoultre\b/i' => 'jzhay-jzhair Le-Cool-t',
+            '/\bLongines\b/i' => 'Lon-gene',
+            '/\bLouis\s+(É|E)rard\b/i' => 'loo ees ay RAHR',
+            '/\bLouis\s+Moinet\b/i' => 'loo ee mwah NAY',
+            '/\bLouis\s+Vuitton\b/i' => 'lou ee vwee TAHN',
+            '/\bMaurice\s+Lacroix\b/i' => 'Maurice LAH KWAH',
+            '/\bMido\b/i' => 'MEE doe',
+            '/\bMontblanc\b/i' => 'Mon-blahn',
+            '/\bMovado\b/i' => 'Moe-vah-doh',
+            '/\bM(ü|u)hle\s+Glash(ü|u)tte\b/i' => 'MEW luh glass HOO tuh',
+            '/\bNomos\b/i' => 'NO mose',
+            '/\bOfficine\s+Panerai\b/i' => 'O-fi-chee-nay Pan-er-aye',
             '/\bPanerai\b/i' => 'pah-neh-RYE',
+            '/\bParmigiani\s+Fleurier\b/i' => 'Parr-mee-zhe-an-ee Flur-ee-ay',
+            '/\bParmigiani\b/i' => 'Par-mi-GEE-ah-NEE',
+            '/\bPatek\s+Philippe\b/i' => 'Pah-tek Feel-lipe',
+            '/\bPerrelet\b/i' => 'Pair-re-lay',
+            '/\bPiaget\b/i' => 'PEE-a-zhay',
+            '/\bRalph\s+Lauren\b/i' => 'Ralph LOR en',
+            '/\bRichard\s+Mille\b/i' => 'ree SHARH MEEL',
+            '/\bRoger\s+Dubuis\b/i' => 'Row-zhay DU-bwee',
+            '/\bSinn\b/i' => 'ZIN',
+            '/\bTAG\s+Heuer\b/i' => 'Tag Houy-er',
+            '/\bTissot\b/i' => 'Tee-SOH',
+            '/\bTutima\b/i' => 'TOO tih muh',
+            '/\bUlysse\s+Nardin\b/i' => 'YOU-lis Nur-den',
+            '/\bUniversal\s+Gen(è|e)ve\b/i' => 'Universal jeh NEV',
+            '/\bVacheron\s+Constantin\b/i' => 'Vach-er-on Kon-stan-tan',
+            '/\bVictorinox\b/i' => 'vick TOR ih nox',
+            '/\bZenith\b/i' => 'Zen-ith',
 
             // Common watch terms
+            '/Guilloch(é|e)/iu' => 'GEE-oh-shay',
+            '/\bHaute\s+horlogerie\b/i' => 'OAT or-LOJ-er-ee',
+            '/\bHorology\b/i' => 'haw-ROL-uh-jee',
             '/\bmare nostrum\b/i' => 'mah-ray nos-trum',
             '/\bRef\.\s*/i' => 'Reference ',
+            '/\bTourbillon\b/i' => 'TOOR-bil-on',
             '/\bETA\b/' => 'eeta',  // Like "Etta" James
 
             // Material codes
@@ -243,6 +311,11 @@ class ElevenLabs_TTS_Content_Filter {
                 $letters = $matches[2];
                 $roman = $matches[3] . $matches[4];
 
+                // Pronounce Calibre/Caliber properly
+                if (strtolower($prefix) === 'calibre' || strtolower($prefix) === 'caliber') {
+                    $prefix = 'KAL-ih-ber';
+                }
+
                 // Convert letters to individual spoken letters
                 $spoken_letters = implode(' ', str_split($letters));
 
@@ -260,7 +333,10 @@ class ElevenLabs_TTS_Content_Filter {
                 }
 
                 return $prefix . ' ' . $spoken_letters . ' ' . $number;
-            }
+            },
+
+            // General Caliber/Calibre pronunciation (for cases not caught by Roman numeral pattern)
+            '/\bCalib(er|re)\b/i' => 'KAL-ih-ber'
         );
 
         // Apply all replacements
