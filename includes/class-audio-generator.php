@@ -429,18 +429,17 @@ class ElevenLabs_TTS_Audio_Generator {
         $ffmpeg_path = $this->find_ffmpeg();
 
         if ($ffmpeg_path) {
+            error_log("ElevenLabs TTS: Using FFmpeg at: " . $ffmpeg_path);
             return $this->combine_with_ffmpeg($files, $ffmpeg_path);
         }
 
-        // Fallback: Simple binary concatenation
-        // Note: This works for MP3 files but may have slight glitches at boundaries
-        error_log("ElevenLabs TTS: FFmpeg not found, using simple concatenation");
-        $combined = '';
-        foreach ($files as $file) {
-            $combined .= file_get_contents($file);
-        }
-
-        return $combined;
+        // FFmpeg not found - return error
+        // Simple binary concatenation doesn't work properly for MP3 files
+        error_log("ElevenLabs TTS: FFmpeg not found, cannot combine audio chunks");
+        return new WP_Error(
+            'ffmpeg_required',
+            'FFmpeg is required to combine audio chunks but was not found. Please install FFmpeg on your server.'
+        );
     }
 
     /**
@@ -482,18 +481,29 @@ class ElevenLabs_TTS_Audio_Generator {
     private function combine_with_ffmpeg($files, $ffmpeg_path) {
         $upload_dir = wp_upload_dir();
         $temp_dir = $upload_dir['basedir'] . '/elevenlabs-audio/temp';
-        $list_file = $temp_dir . '/concat-list-' . time() . '.txt';
-        $output_file = $temp_dir . '/combined-' . time() . '.mp3';
+        $list_file = $temp_dir . '/concat-list-' . time() . '-' . rand(1000, 9999) . '.txt';
+        $output_file = $temp_dir . '/combined-' . time() . '-' . rand(1000, 9999) . '.mp3';
 
         // Create concat file list for FFmpeg
         $list_content = '';
         foreach ($files as $file) {
-            $list_content .= "file '" . $file . "'\n";
+            // Escape single quotes in filenames for the concat file
+            $escaped_file = str_replace("'", "'\\''", $file);
+            $list_content .= "file '" . $escaped_file . "'\n";
         }
         file_put_contents($list_file, $list_content);
 
-        // Run FFmpeg to concatenate files
-        $command = escapeshellcmd($ffmpeg_path) . " -f concat -safe 0 -i " . escapeshellarg($list_file) . " -c copy " . escapeshellarg($output_file) . " 2>&1";
+        // Build FFmpeg command properly without escapeshellcmd
+        // Using concat demuxer with re-encoding to ensure compatibility
+        $command = sprintf(
+            '%s -f concat -safe 0 -i %s -c:a libmp3lame -b:a 128k -ar 44100 %s 2>&1',
+            escapeshellarg($ffmpeg_path),
+            escapeshellarg($list_file),
+            escapeshellarg($output_file)
+        );
+
+        error_log("ElevenLabs TTS: Running FFmpeg command: " . $command);
+
         $output = array();
         $return_var = 0;
         exec($command, $output, $return_var);
@@ -504,9 +514,11 @@ class ElevenLabs_TTS_Audio_Generator {
         }
 
         if ($return_var !== 0 || !file_exists($output_file)) {
-            error_log("ElevenLabs TTS: FFmpeg failed: " . implode("\n", $output));
-            return new WP_Error('ffmpeg_failed', 'Failed to combine audio files with FFmpeg');
+            error_log("ElevenLabs TTS: FFmpeg failed with return code {$return_var}: " . implode("\n", $output));
+            return new WP_Error('ffmpeg_failed', 'Failed to combine audio files with FFmpeg: ' . implode(' ', $output));
         }
+
+        error_log("ElevenLabs TTS: FFmpeg succeeded, reading combined file");
 
         // Read combined file
         $combined_data = file_get_contents($output_file);
