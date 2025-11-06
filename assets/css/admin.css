@@ -1,0 +1,166 @@
+/**
+ * ElevenLabs TTS Admin Styles
+ */
+
+#elevenlabs_connection_status {
+    margin-top: 10px;
+}
+
+#elevenlabs_connection_status.success {
+    color: #46b450;
+    font-weight: 600;
+}
+
+#elevenlabs_connection_status.error {
+    color: #dc3232;
+    font-weight: 600;
+}
+
+#elevenlabs_voices_list {
+    margin-top: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 10px;
+    background: #f9f9f9;
+    display: none;
+}
+
+#elevenlabs_voices_list.loaded {
+    display: block;
+}
+
+.elevenlabs-voice-item {
+    padding: 10px;
+    margin-bottom: 8px;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.elevenlabs-voice-item:hover {
+    background: #f0f0f0;
+    border-color: #0073aa;
+}
+
+.elevenlabs-voice-item.selected {
+    background: #e7f5fe;
+    border-color: #0073aa;
+}
+
+.elevenlabs-voice-name {
+    font-weight: 600;
+    color: #333;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.elevenlabs-voice-description {
+    font-size: 12px;
+    color: #666;
+    display: block;
+}
+
+.elevenlabs-voice-labels {
+    margin-top: 5px;
+}
+
+.elevenlabs-voice-label {
+    display: inline-block;
+    background: #0073aa;
+    color: white;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-right: 4px;
+    margin-top: 4px;
+}
+
+/* Range slider styling */
+input[type="range"] {
+    width: 300px;
+    margin-right: 10px;
+}
+
+#elevenlabs_stability_value,
+#elevenlabs_similarity_value,
+#elevenlabs_style_value {
+    font-weight: 600;
+    color: #0073aa;
+    min-width: 40px;
+    display: inline-block;
+}
+
+.form-table th {
+    width: 200px;
+}
+
+/* Loading spinner */
+.elevenlabs-admin-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(0, 0, 0, 0.1);
+    border-top-color: #0073aa;
+    border-radius: 50%;
+    animation: elevenlabs-spin 0.8s linear infinite;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+@keyframes elevenlabs-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Button states */
+.button.loading {
+    position: relative;
+    color: transparent;
+}
+
+.button.loading::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: elevenlabs-spin 0.8s linear infinite;
+}
+
+/* Info boxes */
+.elevenlabs-info-box {
+    background: #e7f5fe;
+    border-left: 4px solid #0073aa;
+    padding: 12px;
+    margin: 20px 0;
+}
+
+.elevenlabs-warning-box {
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+    padding: 12px;
+    margin: 20px 0;
+}
+
+.elevenlabs-error-box {
+    background: #f8d7da;
+    border-left: 4px solid #dc3545;
+    padding: 12px;
+    margin: 20px 0;
+}
+
+.elevenlabs-info-box p,
+.elevenlabs-warning-box p,
+.elevenlabs-error-box p {
+    margin: 0;
+    font-size: 13px;
+}

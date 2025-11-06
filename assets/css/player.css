@@ -1,0 +1,161 @@
+/**
+ * ElevenLabs TTS Audio Player Styles
+ */
+
+.elevenlabs-audio-player-container {
+    margin: 20px 0;
+    padding: 0;
+}
+
+.elevenlabs-player {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 30px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.elevenlabs-player-icon {
+    font-size: 32px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.elevenlabs-player-content {
+    flex-grow: 1;
+}
+
+.elevenlabs-player-title {
+    margin: 0 0 10px 0;
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+}
+
+.elevenlabs-audio-element {
+    width: 100%;
+    max-width: 500px;
+    outline: none;
+}
+
+.elevenlabs-regenerate-btn,
+.elevenlabs-generate-btn,
+.elevenlabs-delete-btn {
+    background: #0073aa;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+
+.elevenlabs-regenerate-btn:hover,
+.elevenlabs-generate-btn:hover {
+    background: #005a87;
+}
+
+.elevenlabs-delete-btn {
+    background: #dc3545;
+}
+
+.elevenlabs-delete-btn:hover {
+    background: #c82333;
+}
+
+.elevenlabs-regenerate-btn:disabled,
+.elevenlabs-generate-btn:disabled,
+.elevenlabs-delete-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+.elevenlabs-generate-container {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.elevenlabs-generate-container p {
+    margin: 0 0 15px 0;
+    color: #856404;
+    font-size: 14px;
+}
+
+.elevenlabs-progress {
+    margin-top: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.elevenlabs-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    border-top-color: #0073aa;
+    border-radius: 50%;
+    animation: elevenlabs-spin 0.8s linear infinite;
+}
+
+@keyframes elevenlabs-spin {
+    to { transform: rotate(360deg); }
+}
+
+.elevenlabs-status-text {
+    color: #666;
+    font-size: 13px;
+}
+
+/* Success message */
+.elevenlabs-success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 12px 20px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+/* Error message */
+.elevenlabs-error {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 12px 20px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .elevenlabs-player {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .elevenlabs-player-icon {
+        font-size: 24px;
+    }
+
+    .elevenlabs-audio-element {
+        max-width: 100%;
+    }
+
+    .elevenlabs-regenerate-btn,
+    .elevenlabs-generate-btn {
+        width: 100%;
+        margin-top: 10px;
+    }
+}
