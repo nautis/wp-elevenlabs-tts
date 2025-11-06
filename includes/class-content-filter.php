@@ -215,7 +215,7 @@ class ElevenLabs_TTS_Content_Filter {
         $replacements = array(
             // Brand names (alphabetical order) - using CMU Arpabet phonemes
             '/\b(A\.\s*Lange\s*&\s*S(?:ö|o)hne)\b/i' => function($m) {
-                return '<phoneme alphabet="cmu-arpabet" ph="AA1 L AH0 NG G AH0">A. Lange</phoneme> & <phoneme alphabet="cmu-arpabet" ph="Z OW1 N AH0">Söhne</phoneme>';
+                return 'A. <phoneme alphabet="cmu-arpabet" ph="L AO1 NG AH0">Lange</phoneme> & <phoneme alphabet="cmu-arpabet" ph="Z OW1 N AH0">Söhne</phoneme>';
             },
             '/\b(Audemars)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="OW1 D AH0 M AA1 R">$1</phoneme>',
             '/\b(Piguet)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="P IY1 G EY1">$1</phoneme>',
@@ -261,7 +261,7 @@ class ElevenLabs_TTS_Content_Filter {
             '/\b(Genta)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="ZH EH1 N T AH0">$1</phoneme>',
             '/\b(Girard)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="ZH IH1 R AA1 R D">$1</phoneme>',
             '/\b(Perregaux)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="P EH1 R AH0 G OW1">$1</phoneme>',
-            '/\b(Glash(?:ü|u)tte)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="G L AA1 S HH UW1 T AH0">Glashütte</phoneme>',
+            // Glashütte - removed phoneme tag, natural pronunciation works better
             '/\b(Glycine)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="G L AY1 S IY0 N">$1</phoneme>',
             '/\b(Greubel)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="G R OY1 B AH0 L">$1</phoneme>',
             '/\b(Forsey)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="F AO1 R S IY0">$1</phoneme>',
