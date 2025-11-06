@@ -85,7 +85,8 @@ class ElevenLabs_TTS_Audio_Generator {
         error_log("Content length: " . strlen($content) . " characters");
 
         // Check if content exceeds the API limit
-        $max_chars = 9500; // Keep under 10,000 limit with buffer
+        // Using 5000 chars per chunk for faster processing and better reliability
+        $max_chars = 5000; // Smaller chunks = faster generation, less timeout risk
         if (strlen($content) > $max_chars) {
             error_log("ElevenLabs TTS: Content exceeds limit, splitting into chunks");
             $chunks = $this->split_text_into_chunks($content, $max_chars);

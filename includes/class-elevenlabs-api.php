@@ -84,7 +84,8 @@ class ElevenLabs_TTS_API {
         // Add output format as query parameter
         $endpoint .= '?output_format=' . $options['output_format'];
 
-        $response = $this->make_request($endpoint, 'POST', $body, true);
+        // Use longer timeout for TTS requests (they can take a while for long text)
+        $response = $this->make_request($endpoint, 'POST', $body, true, 180);
 
         if (is_wp_error($response)) {
             return $response;
@@ -100,9 +101,10 @@ class ElevenLabs_TTS_API {
      * @param string $method HTTP method
      * @param array $body Request body
      * @param bool $return_raw Return raw response body
+     * @param int $timeout Timeout in seconds (default 60)
      * @return array|string|WP_Error Response data or error
      */
-    private function make_request($endpoint, $method = 'GET', $body = null, $return_raw = false) {
+    private function make_request($endpoint, $method = 'GET', $body = null, $return_raw = false, $timeout = 60) {
         if (empty($this->api_key)) {
             return new WP_Error('no_api_key', 'ElevenLabs API key is not configured');
         }
@@ -115,7 +117,7 @@ class ElevenLabs_TTS_API {
                 'xi-api-key' => $this->api_key,
                 'Content-Type' => 'application/json'
             ),
-            'timeout' => 60
+            'timeout' => $timeout
         );
 
         if ($body !== null && $method !== 'GET') {
