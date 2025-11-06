@@ -80,6 +80,19 @@ class ElevenLabs_TTS_Audio_Generator {
             'output_format' => 'mp3_44100_128'
         );
 
+        // Add pronunciation dictionary if configured
+        $dict_id = get_option('elevenlabs_pronunciation_dictionary_id');
+        $dict_version = get_option('elevenlabs_pronunciation_dictionary_version');
+        if (!empty($dict_id) && !empty($dict_version)) {
+            $options['pronunciation_dictionary_locators'] = array(
+                array(
+                    'pronunciation_dictionary_id' => $dict_id,
+                    'version_id' => $dict_version
+                )
+            );
+            error_log("ElevenLabs TTS: Using pronunciation dictionary: {$dict_id} (version: {$dict_version})");
+        }
+
         // Log the generation attempt
         error_log("ElevenLabs TTS: Generating audio for post {$post_id}");
         error_log("Content length: " . strlen($content) . " characters");

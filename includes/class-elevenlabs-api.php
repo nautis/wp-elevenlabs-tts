@@ -66,7 +66,8 @@ class ElevenLabs_TTS_API {
                 'style' => 0.0,
                 'use_speaker_boost' => true
             ),
-            'output_format' => 'mp3_44100_128'
+            'output_format' => 'mp3_44100_128',
+            'pronunciation_dictionary_locators' => array()
         );
 
         $options = wp_parse_args($options, $defaults);
@@ -77,6 +78,11 @@ class ElevenLabs_TTS_API {
             'model_id' => $options['model_id'],
             'voice_settings' => $options['voice_settings']
         );
+
+        // Add pronunciation dictionary if provided
+        if (!empty($options['pronunciation_dictionary_locators'])) {
+            $body['pronunciation_dictionary_locators'] = $options['pronunciation_dictionary_locators'];
+        }
 
         // Make request
         $endpoint = "/text-to-speech/{$voice_id}";
@@ -92,6 +98,106 @@ class ElevenLabs_TTS_API {
         }
 
         return $response;
+    }
+
+    /**
+     * Upload pronunciation dictionary from PLS file
+     *
+     * @param string $file_path Path to PLS file
+     * @param string $name Dictionary name
+     * @return array|WP_Error Dictionary data or error
+     */
+    public function upload_pronunciation_dictionary($file_path, $name) {
+        if (empty($this->api_key)) {
+            return new WP_Error('no_api_key', 'ElevenLabs API key is not configured');
+        }
+
+        if (!file_exists($file_path)) {
+            return new WP_Error('file_not_found', 'PLS file not found: ' . $file_path);
+        }
+
+        $url = $this->base_url . '/pronunciation-dictionaries/add-from-file';
+
+        // Read file content
+        $file_content = file_get_contents($file_path);
+        $boundary = wp_generate_password(24);
+
+        // Build multipart form data
+        $body = "--{$boundary}\r\n";
+        $body .= 'Content-Disposition: form-data; name="name"' . "\r\n\r\n";
+        $body .= $name . "\r\n";
+        $body .= "--{$boundary}\r\n";
+        $body .= 'Content-Disposition: form-data; name="file"; filename="' . basename($file_path) . '"' . "\r\n";
+        $body .= 'Content-Type: application/pls+xml' . "\r\n\r\n";
+        $body .= $file_content . "\r\n";
+        $body .= "--{$boundary}--\r\n";
+
+        $args = array(
+            'method' => 'POST',
+            'headers' => array(
+                'xi-api-key' => $this->api_key,
+                'Content-Type' => 'multipart/form-data; boundary=' . $boundary
+            ),
+            'body' => $body,
+            'timeout' => 30
+        );
+
+        $response = wp_remote_request($url, $args);
+
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        $status_code = wp_remote_retrieve_response_code($response);
+        $response_body = wp_remote_retrieve_body($response);
+
+        if ($status_code < 200 || $status_code >= 300) {
+            $error_data = json_decode($response_body, true);
+            $error_message = isset($error_data['detail']['message'])
+                ? $error_data['detail']['message']
+                : (isset($error_data['detail']) && is_string($error_data['detail'])
+                    ? $error_data['detail']
+                    : 'Failed to upload dictionary with status ' . $status_code);
+
+            return new WP_Error('upload_failed', $error_message, array('status' => $status_code));
+        }
+
+        $data = json_decode($response_body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return new WP_Error('json_error', 'Failed to decode API response');
+        }
+
+        return $data;
+    }
+
+    /**
+     * Get list of pronunciation dictionaries
+     *
+     * @return array|WP_Error List of dictionaries or error
+     */
+    public function get_pronunciation_dictionaries() {
+        return $this->make_request('/pronunciation-dictionaries', 'GET');
+    }
+
+    /**
+     * Get pronunciation dictionary by ID
+     *
+     * @param string $dictionary_id Dictionary ID
+     * @return array|WP_Error Dictionary data or error
+     */
+    public function get_pronunciation_dictionary($dictionary_id) {
+        return $this->make_request("/pronunciation-dictionaries/{$dictionary_id}", 'GET');
+    }
+
+    /**
+     * Delete pronunciation dictionary
+     *
+     * @param string $dictionary_id Dictionary ID
+     * @return array|WP_Error Response or error
+     */
+    public function delete_pronunciation_dictionary($dictionary_id) {
+        return $this->make_request("/pronunciation-dictionaries/{$dictionary_id}", 'DELETE');
     }
 
     /**
