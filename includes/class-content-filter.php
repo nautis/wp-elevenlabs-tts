@@ -215,7 +215,7 @@ class ElevenLabs_TTS_Content_Filter {
         $replacements = array(
             // Brand names (alphabetical order) - using CMU Arpabet phonemes
             '/\b(A\.\s*Lange\s*&\s*S(?:ö|o)hne)\b/i' => function($m) {
-                return '<phoneme alphabet="cmu-arpabet" ph="AA1">A.</phoneme> <phoneme alphabet="cmu-arpabet" ph="L AE1 NG AH0">Lange</phoneme> & <phoneme alphabet="cmu-arpabet" ph="Z ER1 N AH0">Söhne</phoneme>';
+                return '<lexeme><grapheme>' . $m[0] . '</grapheme><alias>eɪˈlɑŋəʊndˈzoʊnə</alias></lexeme>';
             },
             '/\b(Audemars)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="OW1 D AH0 M AA1 R">$1</phoneme>',
             '/\b(Piguet)\b/i' => '<phoneme alphabet="cmu-arpabet" ph="P IY1 G EY1">$1</phoneme>',
