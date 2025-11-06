@@ -84,16 +84,34 @@ class ElevenLabs_TTS_Audio_Generator {
         error_log("ElevenLabs TTS: Generating audio for post {$post_id}");
         error_log("Content length: " . strlen($content) . " characters");
 
-        // Generate audio
-        $audio_data = $this->api->text_to_speech($content, $voice_id, $options);
+        // Check if content exceeds the API limit
+        $max_chars = 9500; // Keep under 10,000 limit with buffer
+        if (strlen($content) > $max_chars) {
+            error_log("ElevenLabs TTS: Content exceeds limit, splitting into chunks");
+            $chunks = $this->split_text_into_chunks($content, $max_chars);
+            error_log("ElevenLabs TTS: Split into " . count($chunks) . " chunks");
 
-        if (is_wp_error($audio_data)) {
-            error_log("ElevenLabs TTS Error: " . $audio_data->get_error_message());
-            return $audio_data;
+            $audio_data = $this->generate_and_combine_chunks($chunks, $voice_id, $options, $post_id);
+
+            if (is_wp_error($audio_data)) {
+                error_log("ElevenLabs TTS Error: " . $audio_data->get_error_message());
+                return $audio_data;
+            }
+
+            // Save combined audio file
+            $file_url = $this->save_audio_file($audio_data, $post_id);
+        } else {
+            // Generate audio for single chunk
+            $audio_data = $this->api->text_to_speech($content, $voice_id, $options);
+
+            if (is_wp_error($audio_data)) {
+                error_log("ElevenLabs TTS Error: " . $audio_data->get_error_message());
+                return $audio_data;
+            }
+
+            // Save audio file
+            $file_url = $this->save_audio_file($audio_data, $post_id);
         }
-
-        // Save audio file
-        $file_url = $this->save_audio_file($audio_data, $post_id);
 
         if (is_wp_error($file_url)) {
             return $file_url;
@@ -267,5 +285,236 @@ class ElevenLabs_TTS_Audio_Generator {
         }
 
         return $results;
+    }
+
+    /**
+     * Split text into chunks at natural boundaries
+     *
+     * @param string $text Text to split
+     * @param int $max_chars Maximum characters per chunk
+     * @return array Array of text chunks
+     */
+    private function split_text_into_chunks($text, $max_chars) {
+        $chunks = array();
+        $current_chunk = '';
+
+        // Split by sentences (period followed by space)
+        $sentences = preg_split('/(?<=[.!?])\s+/', $text, -1, PREG_SPLIT_NO_EMPTY);
+
+        foreach ($sentences as $sentence) {
+            // If single sentence is too long, split by words
+            if (strlen($sentence) > $max_chars) {
+                if (!empty($current_chunk)) {
+                    $chunks[] = trim($current_chunk);
+                    $current_chunk = '';
+                }
+
+                $words = explode(' ', $sentence);
+                foreach ($words as $word) {
+                    if (strlen($current_chunk . ' ' . $word) > $max_chars) {
+                        if (!empty($current_chunk)) {
+                            $chunks[] = trim($current_chunk);
+                        }
+                        $current_chunk = $word;
+                    } else {
+                        $current_chunk .= ($current_chunk ? ' ' : '') . $word;
+                    }
+                }
+            } else {
+                // Check if adding this sentence would exceed limit
+                if (strlen($current_chunk . ' ' . $sentence) > $max_chars) {
+                    if (!empty($current_chunk)) {
+                        $chunks[] = trim($current_chunk);
+                    }
+                    $current_chunk = $sentence;
+                } else {
+                    $current_chunk .= ($current_chunk ? ' ' : '') . $sentence;
+                }
+            }
+        }
+
+        // Add remaining chunk
+        if (!empty($current_chunk)) {
+            $chunks[] = trim($current_chunk);
+        }
+
+        return $chunks;
+    }
+
+    /**
+     * Generate audio for multiple chunks and combine them
+     *
+     * @param array $chunks Array of text chunks
+     * @param string $voice_id Voice ID
+     * @param array $options API options
+     * @param int $post_id Post ID for temp files
+     * @return string|WP_Error Combined audio data or error
+     */
+    private function generate_and_combine_chunks($chunks, $voice_id, $options, $post_id) {
+        $upload_dir = wp_upload_dir();
+        $temp_dir = $upload_dir['basedir'] . '/elevenlabs-audio/temp';
+
+        // Create temp directory if needed
+        if (!file_exists($temp_dir)) {
+            wp_mkdir_p($temp_dir);
+        }
+
+        $temp_files = array();
+        $chunk_num = 1;
+
+        // Generate audio for each chunk
+        foreach ($chunks as $chunk) {
+            error_log("ElevenLabs TTS: Generating chunk {$chunk_num} of " . count($chunks) . " (" . strlen($chunk) . " chars)");
+
+            $audio_data = $this->api->text_to_speech($chunk, $voice_id, $options);
+
+            if (is_wp_error($audio_data)) {
+                // Cleanup temp files on error
+                foreach ($temp_files as $temp_file) {
+                    if (file_exists($temp_file)) {
+                        unlink($temp_file);
+                    }
+                }
+                return $audio_data;
+            }
+
+            // Save chunk to temp file
+            $temp_file = $temp_dir . '/post-' . $post_id . '-chunk-' . $chunk_num . '-' . time() . '.mp3';
+            file_put_contents($temp_file, $audio_data);
+            $temp_files[] = $temp_file;
+
+            $chunk_num++;
+
+            // Small delay between chunks to avoid rate limiting
+            if ($chunk_num <= count($chunks)) {
+                sleep(1);
+            }
+        }
+
+        // Combine audio files
+        error_log("ElevenLabs TTS: Combining " . count($temp_files) . " audio chunks");
+        $combined_data = $this->combine_audio_files($temp_files);
+
+        // Cleanup temp files
+        foreach ($temp_files as $temp_file) {
+            if (file_exists($temp_file)) {
+                unlink($temp_file);
+            }
+        }
+
+        if (is_wp_error($combined_data)) {
+            return $combined_data;
+        }
+
+        return $combined_data;
+    }
+
+    /**
+     * Combine multiple MP3 files into one
+     *
+     * @param array $files Array of file paths
+     * @return string|WP_Error Combined audio data or error
+     */
+    private function combine_audio_files($files) {
+        if (empty($files)) {
+            return new WP_Error('no_files', 'No audio files to combine');
+        }
+
+        if (count($files) === 1) {
+            return file_get_contents($files[0]);
+        }
+
+        // Try using FFmpeg if available
+        $ffmpeg_path = $this->find_ffmpeg();
+
+        if ($ffmpeg_path) {
+            return $this->combine_with_ffmpeg($files, $ffmpeg_path);
+        }
+
+        // Fallback: Simple binary concatenation
+        // Note: This works for MP3 files but may have slight glitches at boundaries
+        error_log("ElevenLabs TTS: FFmpeg not found, using simple concatenation");
+        $combined = '';
+        foreach ($files as $file) {
+            $combined .= file_get_contents($file);
+        }
+
+        return $combined;
+    }
+
+    /**
+     * Find FFmpeg executable
+     *
+     * @return string|false FFmpeg path or false if not found
+     */
+    private function find_ffmpeg() {
+        $possible_paths = array(
+            '/usr/bin/ffmpeg',
+            '/usr/local/bin/ffmpeg',
+            '/opt/homebrew/bin/ffmpeg',
+            'ffmpeg' // Check in PATH
+        );
+
+        foreach ($possible_paths as $path) {
+            if ($path === 'ffmpeg') {
+                $output = array();
+                $return_var = 0;
+                @exec('which ffmpeg 2>/dev/null', $output, $return_var);
+                if ($return_var === 0 && !empty($output[0])) {
+                    return $output[0];
+                }
+            } elseif (file_exists($path) && is_executable($path)) {
+                return $path;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Combine audio files using FFmpeg
+     *
+     * @param array $files Array of file paths
+     * @param string $ffmpeg_path Path to FFmpeg
+     * @return string|WP_Error Combined audio data or error
+     */
+    private function combine_with_ffmpeg($files, $ffmpeg_path) {
+        $upload_dir = wp_upload_dir();
+        $temp_dir = $upload_dir['basedir'] . '/elevenlabs-audio/temp';
+        $list_file = $temp_dir . '/concat-list-' . time() . '.txt';
+        $output_file = $temp_dir . '/combined-' . time() . '.mp3';
+
+        // Create concat file list for FFmpeg
+        $list_content = '';
+        foreach ($files as $file) {
+            $list_content .= "file '" . $file . "'\n";
+        }
+        file_put_contents($list_file, $list_content);
+
+        // Run FFmpeg to concatenate files
+        $command = escapeshellcmd($ffmpeg_path) . " -f concat -safe 0 -i " . escapeshellarg($list_file) . " -c copy " . escapeshellarg($output_file) . " 2>&1";
+        $output = array();
+        $return_var = 0;
+        exec($command, $output, $return_var);
+
+        // Cleanup list file
+        if (file_exists($list_file)) {
+            unlink($list_file);
+        }
+
+        if ($return_var !== 0 || !file_exists($output_file)) {
+            error_log("ElevenLabs TTS: FFmpeg failed: " . implode("\n", $output));
+            return new WP_Error('ffmpeg_failed', 'Failed to combine audio files with FFmpeg');
+        }
+
+        // Read combined file
+        $combined_data = file_get_contents($output_file);
+
+        // Cleanup output file
+        if (file_exists($output_file)) {
+            unlink($output_file);
+        }
+
+        return $combined_data;
     }
 }
