@@ -23,9 +23,14 @@
         let searchTimeout;
         let currentResults = [];
 
-        // Create autocomplete container
+        // Wrap input for positioning FIRST
+        if (!$movieInput.parent().hasClass('fwd-autocomplete-wrapper')) {
+            $movieInput.wrap('<div class="fwd-autocomplete-wrapper" style="position: relative;"></div>');
+        }
+
+        // Create autocomplete container and insert into wrapper
         const $autocomplete = $('<div class="fwd-autocomplete-results"></div>');
-        $movieInput.after($autocomplete);
+        $movieInput.parent().append($autocomplete);
 
         // Handle input
         $movieInput.on('input', function() {
@@ -49,9 +54,6 @@
                 $autocomplete.hide();
             }
         });
-
-        // Wrap input for positioning
-        $movieInput.wrap('<div class="fwd-autocomplete-wrapper" style="position: relative;"></div>');
     }
 
     /**
@@ -209,9 +211,14 @@
 
         let searchTimeout;
 
-        // Create autocomplete container
+        // Wrap input for positioning FIRST
+        if (!$actorInput.parent().hasClass('fwd-autocomplete-wrapper')) {
+            $actorInput.wrap('<div class="fwd-autocomplete-wrapper" style="position: relative;"></div>');
+        }
+
+        // Create autocomplete container and insert into wrapper
         const $autocomplete = $('<div class="fwd-autocomplete-results"></div>');
-        $actorInput.after($autocomplete);
+        $actorInput.parent().append($autocomplete);
 
         // Handle input
         $actorInput.on('input', function() {
@@ -235,9 +242,6 @@
                 $autocomplete.hide();
             }
         });
-
-        // Wrap input for positioning
-        $actorInput.wrap('<div class="fwd-autocomplete-wrapper" style="position: relative;"></div>');
     }
 
     /**
