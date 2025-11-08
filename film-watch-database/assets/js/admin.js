@@ -18,7 +18,12 @@
      */
     function initMovieAutocomplete() {
         const $movieInput = $('#fwd-movie-autocomplete');
-        if ($movieInput.length === 0) return;
+        if ($movieInput.length === 0) {
+            console.log('FWD Admin: Movie input not found');
+            return;
+        }
+
+        console.log('FWD Admin: Initializing movie autocomplete');
 
         let searchTimeout;
         let currentResults = [];
@@ -35,6 +40,7 @@
         // Handle input
         $movieInput.on('input', function() {
             const query = $(this).val().trim();
+            console.log('FWD Admin: Movie input event, query:', query);
 
             clearTimeout(searchTimeout);
 
@@ -43,6 +49,7 @@
                 return;
             }
 
+            console.log('FWD Admin: Searching for movies:', query);
             searchTimeout = setTimeout(function() {
                 searchMovies(query, $autocomplete, $movieInput);
             }, AUTOCOMPLETE_CONFIG.delay);
@@ -397,8 +404,16 @@
      * Initialize on document ready
      */
     $(document).ready(function() {
+        console.log('FWD Admin: Initializing TMDB autocomplete...');
+        console.log('FWD Admin: Movie input exists:', $('#fwd-movie-autocomplete').length > 0);
+        console.log('FWD Admin: Actor input exists:', $('#fwd-actor-autocomplete').length > 0);
+        console.log('FWD Admin: fwdAjax defined:', typeof fwdAjax !== 'undefined');
+        console.log('FWD Admin: ajaxurl defined:', typeof ajaxurl !== 'undefined');
+
         initMovieAutocomplete();
         initActorAutocomplete();
+
+        console.log('FWD Admin: Autocomplete initialized');
     });
 
 })(jQuery);
