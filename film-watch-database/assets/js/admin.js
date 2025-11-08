@@ -236,7 +236,11 @@
 
             $actorBtn.on('click', function() {
                 const actorData = $(this).data('actor');
+                // Update both the hidden field and visible autocomplete input
                 $('#fwd-actor-name').val(actorData.name);
+                $('#fwd-actor-autocomplete').val(actorData.name);
+                $('#fwd-actor-id').val(actorData.id || '');
+
                 if (actorData.character) {
                     $('#fwd-character-name').val(actorData.character);
                 }
