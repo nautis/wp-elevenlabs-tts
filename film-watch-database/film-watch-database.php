@@ -179,8 +179,9 @@ class Film_Watch_Database {
      * Enqueue admin styles and scripts
      */
     public function enqueue_admin_assets($hook) {
-        // Only load on our settings page
-        if ('settings_page_film-watch-database' !== $hook) {
+        // Check if we're on our settings page (works for both regular and network admin)
+        $page = isset($_GET['page']) ? $_GET['page'] : '';
+        if ($page !== 'film-watch-database') {
             return;
         }
 
