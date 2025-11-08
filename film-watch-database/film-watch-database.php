@@ -3,7 +3,7 @@
  * Plugin Name: Film Watch Database
  * Plugin URI: https://github.com/nautis/watch-utils
  * Description: WordPress plugin for cataloging watches worn by actors in films, with TMDB API integration for autocomplete and AI-powered parsing.
- * Version: 3.9.2
+ * Version: 3.9.3
  * Author: Your Name
  * Author URI: https://github.com/nautis
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('FWD_VERSION', '3.9.2');
+define('FWD_VERSION', '3.9.3');
 define('FWD_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('FWD_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('FWD_PLUGIN_BASENAME', plugin_basename(__FILE__));

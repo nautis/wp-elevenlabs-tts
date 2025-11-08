@@ -193,14 +193,31 @@
      * Display movie cast for selection
      */
     function displayMovieCast(cast) {
+        console.log('FWD Admin: displayMovieCast called with', cast.length, 'actors');
+
         const $castContainer = $('#fwd-movie-cast-list');
+        console.log('FWD Admin: Cast container exists:', $castContainer.length > 0);
+
         if ($castContainer.length === 0) {
-            $('#fwd-movie-poster-preview').after(
-                '<div id="fwd-movie-cast-list" style="margin-top: 15px;"><strong>Cast:</strong><div class="fwd-cast-items" style="margin-top: 10px;"></div></div>'
-            );
+            const $posterPreview = $('#fwd-movie-poster-preview');
+            console.log('FWD Admin: Poster preview exists:', $posterPreview.length > 0);
+
+            if ($posterPreview.length > 0) {
+                $posterPreview.after(
+                    '<div id="fwd-movie-cast-list" style="margin-top: 15px;"><strong>Cast:</strong><div class="fwd-cast-items" style="margin-top: 10px;"></div></div>'
+                );
+                console.log('FWD Admin: Cast container created after poster');
+            } else {
+                // If no poster preview, insert after the movie input wrapper
+                $('.fwd-autocomplete-wrapper').first().after(
+                    '<div id="fwd-movie-cast-list" style="margin-top: 15px;"><strong>Cast:</strong><div class="fwd-cast-items" style="margin-top: 10px;"></div></div>'
+                );
+                console.log('FWD Admin: Cast container created after input wrapper');
+            }
         }
 
         const $castItems = $('.fwd-cast-items');
+        console.log('FWD Admin: Cast items container found:', $castItems.length > 0);
         $castItems.empty();
 
         cast.forEach(function(actor) {
