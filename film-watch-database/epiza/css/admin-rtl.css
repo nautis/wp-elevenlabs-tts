@@ -1,0 +1,44 @@
+#epiza-header ul li {
+    margin: 0 5px 0 0;
+}
+
+#epiza-header ul li a .dashicons {
+    margin-left: 0;
+    margin-right: 5px;
+}
+
+#epiza-import-count {
+    margin-left: 0;
+    margin-right: 0.4rem;
+}
+
+#epiza .epiza-search-box button {
+    margin-left: 0;
+    margin-right: 10px;
+}
+
+.epiza-masonry-btn-wrap {
+    right: auto;
+    left: 10px;
+}
+
+.epiza-table-actions {
+    text-align: left !important;
+}
+
+.epiza-table-badge {
+    margin-right: 0;
+    margin-left: 6px;
+}
+
+@media only screen and (max-width: 1200px) {
+    #epiza {
+        margin: 20px 0 20px 20px;
+    }
+}
+
+@media only screen and (max-width: 782px) {
+    #epiza {
+        margin: 20px 10px 20px 20px;
+    }
+}

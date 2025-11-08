@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en-US">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no" />
+    <title>Epiza Documentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <link rel='stylesheet' href='css/fontawesome.css' type='text/css' media='all' />
+    <link rel='stylesheet' href='css/bootstrap.min.css' type='text/css' media='all' />
+    <link rel='stylesheet' href='css/style.css' type='text/css' media='all' />
+    <link rel='stylesheet' href='css/highlight.css' type='text/css' media='all' />
+</head>
+
+<body>
+    <div id="main">
+    <header id="tessera-header">
+        <div id="tessera-header-wrapper">
+            <div id="tessera-page-title" class="container">
+                <h1>Help Documentation</h1>
+                <p>Epiza - Bulk Movie & TV Show Importer</p>
+                <a href="https://www.youtube.com/watch?v=2v0Y1uNtK4Q" target="_blank" class="btn btn-default" style="margin-top:1rem;padding: 1rem 2rem;">Watch Video <i class="fa fa-play-circle" style="margin-left:5px;"></i></a>
+            </div>
+        </div>
+    </header>
+    <main id="tessera-main-wrapper">
+        <div class="container">
+            <div class="row">
+                <aside id="aside" class="col-12 col-lg-3">
+                    <div class="theiaStickySidebar">
+                        <ul id="tessera-list" class="list-group">
+                            <li class="list-group-item"><a class="page-scroll" href="#installation">Installation</a></li>
+                            <li class="list-group-item"><a class="page-scroll" href="#settings">Settings</a></li>
+                            <li class="list-group-item"><a class="page-scroll" href="#import">Importing Movies & TV Shows</a></li>
+                            <li class="list-group-item"><a class="page-scroll" href="#cpt">Custom Post Types</a></li>
+                        </ul>
+                        <div class="clearfix"></div>
+                    </div>
+                </aside>
+
+                <div class="col-12 col-lg-9 mt-5 mt-lg-0">
+                    
+                    <section class="section" id="installation">
+                        <div class="page-header">
+                            <h2>Installation</h2>
+                        </div>
+                        <p>The first thing you need to do when you want to install a new WordPress plugin is to login to your site admin page. Once there, go to Plugins -> Add New. Click "Upload Plugin" button and upload the zip file from your local hard drive.</p>
+                        <div class="img-wrapper">
+                             <img loading="lazy" src="images/install.png" alt="installation" />
+                        </div>
+                    </section>
+
+                    <section class="section" id="settings">
+                        <div class="page-header">
+                            <h2>Settings</h2>
+                        </div>
+                        <p>You can access all settings of the plugin from the Epiza->Settings page.</p>
+                        <div class="img-wrapper">
+                            <img loading="lazy" src="images/settings.png" alt="settings" />
+                       </div>
+                       <h3>TMDB API</h3>
+                       <p>To activate <a href="https://www.themoviedb.org/" target="_blank"><strong>TMDB integration</strong></a>  you'll need to obtain an API key from your TMDB account. To obtain an API key, go to <a href="https://www.themoviedb.org/settings/api" rel="nofollow" target="_blank"><strong>the API page</strong></a> in your TMDB account and fill out the application form. Once your application is approved, you'll be able to access your "API key" and "API Read Access Token" on this page.</p>
+                        <div class="img-wrapper">
+                             <img loading="lazy" decoding="async" src="images/tmdb.png" alt="tmdb api" />
+                        </div>
+                        <p>To enable TMDB API in Epiza, copy&paste "API Read Access Token" to Epiza->Settings.</p>
+                        <div class="img-wrapper" style="max-width:800px">
+                             <img loading="lazy" decoding="async" src="images/tmdb2.png" alt="tmdb api" />
+                        </div>
+                    </section>
+
+                    <section class="section" id="import">
+                        <div class="page-header">
+                            <h2>Importing Movies & TV Shows</h2>
+                        </div>
+                        <p>If you have completed the TMDB integration correctly, the importer will be activated. Importing movies or TV shows is easy. You can use the search box to search for any movie or TV show in the TMDB database. Once you find what you're looking for, you can add it to your import list by clicking the "plus" icon on the posters.</p>
+                        <div class="img-wrapper">
+                             <img loading="lazy" decoding="async" src="images/import.png" alt="tmdb import" />
+                        </div>
+                        <div class="img-wrapper">
+                             <img loading="lazy" decoding="async" src="images/import2.png" alt="tmdb import" />
+                        </div>
+                        <p>After the import process is completed, you can easily see the imported movies or TV series on your site by clicking the links in the upper right corner. Movies and TV shows are listed similarly to your theme's blog page. Custom post types are a core feature of WordPress, and your theme should display them properly. If you are not satisfied with the look, we recommend trying other themes.</p>
+                        <p>If you wish, you can modify the custom post type and taxonomy links by editing the url slugs in the Settings->Permalinks page;</p>
+                        <div class="img-wrapper" style="max-width:800px">
+                             <img loading="lazy" decoding="async" src="images/permalinks.png" alt="permalinks" />
+                        </div>
+                    </section>
+
+                    <section class="section" id="cpt">
+                        <div class="page-header">
+                            <h2>Custom Post Types</h2>
+                        </div>
+                        <p>There are 2 custom post type and 3 custom taxonomy in Epiza. Custom post types are very similar (movies and tv shows). They have their own "genre" taxonomy and share the "actor" taxonomy. All fields are automatically filled in after import. You can easily edit them manually later if you wish.</p>
+                        <div class="img-wrapper">
+                             <img loading="lazy" decoding="async" src="images/cpt.png" alt="custom post types" />
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+    <div class="clearfix"></div>
+    <footer id="tessera-footer">
+        <div id="tessera-footer-bottom">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col-12 col-lg-6">
+                        <p>Copyright <a href="https://codecanyon.net/user/egemenerd/portfolio" target="_blank">egemenerd</a></p>
+                    </div>
+                    <div class="col-12 col-lg-6">
+                        <ul class="tessera-footer-icons">
+                            <li id="tessera-gototop-li" data-toggle="tooltip" data-placement="top" title="Go to Top"><a id="tessera-gototop" href="#"><i class="fa fa-arrow-up"></i></a></li>
+                        </ul>
+                        <div class="clearfix"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="clearfix"></div>
+        </div>
+    </footer>
+</div>
+    <script type='text/javascript' src='js/jquery.js'></script>
+    <script type='text/javascript' src='js/popper.min.js'></script>
+    <script type='text/javascript' src='js/bootstrap.min.js'></script>
+    <script type='text/javascript' src='js/theia-sticky-sidebar.min.js'></script>
+    <script type='text/javascript' src='js/highlight.min.js'></script>
+    <script>hljs.highlightAll();</script>
+    <script type='text/javascript' src='js/custom.js'></script>
+</body>
+
+</html>
