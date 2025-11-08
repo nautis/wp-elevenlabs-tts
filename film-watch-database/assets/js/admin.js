@@ -195,9 +195,10 @@
     function displayMovieCast(cast) {
         console.log('FWD Admin: displayMovieCast called with', cast.length, 'actors');
 
-        const $castContainer = $('#fwd-movie-cast-list');
+        let $castContainer = $('#fwd-movie-cast-list');
         console.log('FWD Admin: Cast container exists:', $castContainer.length > 0);
 
+        // Check if container exists and has proper structure
         if ($castContainer.length === 0) {
             const $posterPreview = $('#fwd-movie-poster-preview');
             console.log('FWD Admin: Poster preview exists:', $posterPreview.length > 0);
@@ -214,9 +215,17 @@
                 );
                 console.log('FWD Admin: Cast container created after input wrapper');
             }
+            $castContainer = $('#fwd-movie-cast-list');
         }
 
-        const $castItems = $('.fwd-cast-items');
+        // Ensure the container has the proper inner structure
+        let $castItems = $castContainer.find('.fwd-cast-items');
+        if ($castItems.length === 0) {
+            console.log('FWD Admin: Cast items div missing, adding it');
+            $castContainer.html('<strong>Cast:</strong><div class="fwd-cast-items" style="margin-top: 10px;"></div>');
+            $castItems = $castContainer.find('.fwd-cast-items');
+        }
+
         console.log('FWD Admin: Cast items container found:', $castItems.length > 0);
         $castItems.empty();
 
