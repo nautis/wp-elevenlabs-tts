@@ -122,6 +122,8 @@
      * Handle movie selection
      */
     function selectMovie(movie) {
+        console.log('FWD Admin: Movie selected:', movie);
+
         // Populate hidden fields
         $('#fwd-movie-id').val(movie.id);
         $('#fwd-movie-title').val(movie.title);
@@ -137,7 +139,10 @@
 
         // Fetch and display cast
         if (movie.id) {
+            console.log('FWD Admin: Fetching cast for movie ID:', movie.id);
             fetchMovieCast(movie.id);
+        } else {
+            console.log('FWD Admin: No movie ID, cannot fetch cast');
         }
 
         // Trigger custom event
@@ -164,14 +169,23 @@
      * Fetch movie cast
      */
     function fetchMovieCast(movieId) {
+        console.log('FWD Admin: Making AJAX request for movie details, ID:', movieId);
+
         $.post(ajaxurl, {
             action: 'fwd_get_movie_details',
             nonce: fwdAjax.nonce,
             movie_id: movieId
         }, function(response) {
+            console.log('FWD Admin: Movie details response:', response);
+
             if (response.success && response.data.cast) {
+                console.log('FWD Admin: Cast found, count:', response.data.cast.length);
                 displayMovieCast(response.data.cast);
+            } else {
+                console.log('FWD Admin: No cast data in response');
             }
+        }).fail(function(jqXHR, textStatus, errorThrown) {
+            console.error('FWD Admin: AJAX error fetching movie details:', textStatus, errorThrown);
         });
     }
 
