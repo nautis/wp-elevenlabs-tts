@@ -1459,7 +1459,6 @@ function fwd_settings_page() {
                         </div>
 
                         <div id="fwd-movie-poster-preview"></div>
-                        <div id="fwd-movie-cast-list"></div>
                     </div>
 
                     <div class="fwd-entry-section">
@@ -1474,8 +1473,6 @@ function fwd_settings_page() {
                             <input type="hidden" id="fwd-actor-id" value="">
                             <input type="hidden" id="fwd-actor-name" value="">
                         </div>
-
-                        <div id="fwd-actor-movies-list"></div>
 
                         <div class="fwd-form-row">
                             <label for="fwd-character-name">Character Name (optional)</label>
@@ -1559,9 +1556,11 @@ function fwd_settings_page() {
                             $('#fwd-tab-tmdb input[type="hidden"]').val('');
                             $('#fwd-tab-tmdb textarea').val('');
                             $('#fwd-movie-poster-preview').empty();
-                            $('#fwd-movie-cast-list').empty();
-                            $('#fwd-actor-movies-list').empty();
+                            $('#fwd-movie-cast-list').remove();
+                            $('#fwd-actor-movies-list').remove();
                             $('#fwd-tmdb-result').html('').hide();
+                            // Remove button highlights
+                            $('.fwd-cast-items .button, .fwd-movie-items .button').removeClass('button-primary');
                         });
 
                         // Submit entry
