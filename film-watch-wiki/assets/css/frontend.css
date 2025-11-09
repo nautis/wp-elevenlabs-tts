@@ -1,0 +1,215 @@
+/**
+ * Film Watch Wiki - Frontend Styles
+ * Clean, minimal styling for movie pages
+ */
+
+/* ========================================
+   Movie Header (Poster + Info Side-by-Side)
+   ======================================== */
+
+.fww_movie .movie-header-wrapper {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 2.5rem;
+    margin-bottom: 2.5rem;
+    align-items: flex-start;
+}
+
+.fww_movie .movie-poster {
+    flex: 0 0 320px !important;
+    width: 320px !important;
+    max-width: 320px !important;
+}
+
+.fww_movie .movie-poster img {
+    width: 320px !important;
+    height: 480px !important;
+    max-width: 320px !important;
+    max-height: 480px !important;
+    display: block;
+    border-radius: 8px;
+}
+
+.fww_movie .movie-header-content {
+    flex: 1;
+    min-width: 0;
+}
+
+/* ========================================
+   Movie Title and Metadata
+   ======================================== */
+
+.fww_movie .entry-title {
+    margin: 0 0 0.5rem 0;
+    font-size: 2.2em;
+    line-height: 1.2;
+    font-weight: 700;
+}
+
+.fww_movie .movie-year {
+    font-weight: 400;
+    opacity: 0.8;
+}
+
+.fww_movie .movie-tagline {
+    font-style: italic;
+    opacity: 0.7;
+    font-size: 1.1em;
+    margin: 0.5rem 0 1rem 0;
+}
+
+.fww_movie .movie-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0 0 1.5rem 0;
+}
+
+.fww_movie .movie-certification {
+    padding: 0.15em 0.4em;
+    border: 1px solid rgba(0,0,0,0.3);
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-weight: 600;
+}
+
+.fww_movie .movie-meta > span:not(:last-child):not(.movie-certification)::after {
+    content: "";
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    background: currentColor;
+    border-radius: 50%;
+    opacity: 0.5;
+    margin-left: 0.75rem;
+}
+
+/* ========================================
+   Overview Section
+   ======================================== */
+
+.fww_movie .movie-overview {
+    margin-top: 1.5rem;
+}
+
+.fww_movie .movie-overview h2 {
+    font-size: 1.4em;
+    font-weight: 700;
+    margin: 0 0 0.75rem 0;
+}
+
+.fww_movie .movie-overview p {
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* ========================================
+   Watch Sightings Section
+   ======================================== */
+
+.movie-watches {
+    margin-top: 3rem;
+}
+
+.movie-watches h2 {
+    font-size: 1.4em;
+    font-weight: 700;
+    margin: 0 0 1.25rem 0;
+}
+
+.watch-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.watch-item {
+    display: flex;
+    gap: 1.5rem;
+    padding: 1.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.watch-image {
+    flex: 0 0 180px;
+    width: 180px;
+}
+
+.watch-image img {
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+    display: block;
+}
+
+.watch-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.watch-model {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.2em;
+}
+
+.watch-worn-by {
+    margin-bottom: 0.75rem;
+}
+
+.watch-narrative {
+    line-height: 1.6;
+    margin: 0.75rem 0;
+}
+
+.watch-verification {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-top: 0.5rem;
+}
+
+.watch-verification-confirmed {
+    background: #d4edda;
+    color: #155724;
+}
+
+.watch-verification-likely {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.watch-verification-unverified {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+/* ========================================
+   Responsive Design
+   ======================================== */
+
+@media (max-width: 992px) {
+    .fww_movie .movie-header-wrapper {
+        flex-direction: column !important;
+    }
+
+    .fww_movie .movie-poster {
+        width: 100%;
+        max-width: 400px;
+        margin: 0 auto;
+    }
+
+    .watch-item {
+        flex-direction: column;
+    }
+
+    .watch-image {
+        width: 100%;
+        max-width: 250px;
+        margin: 0 auto;
+    }
+}

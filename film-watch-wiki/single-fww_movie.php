@@ -1,0 +1,146 @@
+<?php
+/**
+ * Single Movie Template
+ * Displays a movie page with TMDB data and watch sightings
+ */
+
+get_header(); ?>
+
+<main id="main" class="site-main">
+<div id="primary" class="content-area">
+
+<?php
+while (have_posts()) : the_post();
+    $post_id = get_the_ID();
+    $movie_data = fww_get_movie_data($post_id);
+    $tmdb_data = $movie_data['tmdb_data'];
+    $film_id = $movie_data['film_id'];
+
+    // Get watch sightings from existing database
+    $watch_sightings = fww_get_movie_watch_sightings($film_id);
+    ?>
+
+    <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
+
+        <div class="movie-header-wrapper">
+            <?php if (!empty($tmdb_data['poster_path'])) : ?>
+                <div class="movie-poster">
+                    <?php echo fww_get_movie_poster($tmdb_data, 'w500'); ?>
+                </div>
+            <?php endif; ?>
+
+            <div class="movie-header-content">
+                <h1 class="entry-title">
+                    <?php the_title(); ?>
+                    <?php if (!empty($movie_data['year'])) : ?>
+                        <span class="movie-year">(<?php echo esc_html($movie_data['year']); ?>)</span>
+                    <?php endif; ?>
+                </h1>
+
+                <?php if (!empty($tmdb_data['tagline'])) : ?>
+                    <p class="movie-tagline"><?php echo esc_html($tmdb_data['tagline']); ?></p>
+                <?php endif; ?>
+
+                <div class="movie-meta">
+                    <?php if (!empty($tmdb_data['certification'])) : ?>
+                        <span class="movie-certification"><?php echo esc_html($tmdb_data['certification']); ?></span>
+                    <?php endif; ?>
+
+                    <?php if (!empty($tmdb_data['release_date'])) : ?>
+                        <span class="movie-release"><?php echo date('m/d/Y', strtotime($tmdb_data['release_date'])); ?> (US)</span>
+                    <?php endif; ?>
+
+                    <?php if (!empty($tmdb_data['genres'])) : ?>
+                        <span class="movie-genres">
+                            <?php
+                            $genre_names = array_map(function($g) { return $g['name']; }, $tmdb_data['genres']);
+                            echo esc_html(implode(', ', $genre_names));
+                            ?>
+                        </span>
+                    <?php endif; ?>
+
+                    <?php if (!empty($tmdb_data['runtime'])) : ?>
+                        <span class="movie-runtime"><?php echo fww_format_runtime($tmdb_data['runtime']); ?></span>
+                    <?php endif; ?>
+                </div>
+
+                <?php if (!empty($tmdb_data['overview'])) : ?>
+                    <div class="movie-overview">
+                        <h2>Overview</h2>
+                        <p><?php echo esc_html($tmdb_data['overview']); ?></p>
+                    </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="entry-content">
+
+            <!-- Watch Sightings Section -->
+            <?php if (!empty($watch_sightings)) : ?>
+                <div class="movie-watches">
+                    <h2>Watches Worn in This Film</h2>
+                    <div class="watch-list">
+                        <?php foreach ($watch_sightings as $sighting) : ?>
+                            <div class="watch-item">
+                                <?php if (!empty($sighting->image_url)) : ?>
+                                    <div class="watch-image">
+                                        <img src="<?php echo esc_url($sighting->image_url); ?>"
+                                             alt="<?php echo esc_attr($sighting->brand_name . ' ' . $sighting->model_reference); ?>">
+                                    </div>
+                                <?php endif; ?>
+
+                                <div class="watch-details">
+                                    <h3 class="watch-model">
+                                        <?php echo esc_html($sighting->brand_name); ?>
+                                        <?php if (!empty($sighting->model_reference)) : ?>
+                                            <?php echo esc_html($sighting->model_reference); ?>
+                                        <?php endif; ?>
+                                    </h3>
+
+                                    <p class="watch-worn-by">
+                                        Worn by <strong><?php echo esc_html($sighting->actor_name); ?></strong>
+                                        <?php if (!empty($sighting->character_name)) : ?>
+                                            as <em><?php echo esc_html($sighting->character_name); ?></em>
+                                        <?php endif; ?>
+                                    </p>
+
+                                    <?php if (!empty($sighting->narrative_role)) : ?>
+                                        <div class="watch-narrative">
+                                            <?php echo wp_kses_post(wpautop($sighting->narrative_role)); ?>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($sighting->verification_level)) : ?>
+                                        <span class="watch-verification watch-verification-<?php echo esc_attr(strtolower($sighting->verification_level)); ?>">
+                                            <?php echo esc_html($sighting->verification_level); ?>
+                                        </span>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($sighting->source_url)) : ?>
+                                        <p class="watch-source">
+                                            <a href="<?php echo esc_url($sighting->source_url); ?>" target="_blank" rel="noopener">
+                                                View Source →
+                                            </a>
+                                        </p>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+        </div><!-- .entry-content -->
+
+    </article>
+
+    <?php
+endwhile;
+?>
+
+</div><!-- #primary -->
+</main><!-- #main -->
+
+<?php
+get_sidebar();
+get_footer();
