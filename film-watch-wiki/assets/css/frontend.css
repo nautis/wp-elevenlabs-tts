@@ -104,18 +104,18 @@ body.single-fww_brand .post-inner {
 }
 
 .fww_movie .movie-poster {
-    flex: 0 0 50px !important;
-    width: 50px !important;
-    max-width: 50px !important;
+    flex: 0 0 250px !important;
+    width: 250px !important;
+    max-width: 250px !important;
 }
 
 .fww_movie .movie-poster img {
-    width: 50px !important;
-    height: 75px !important;
-    max-width: 50px !important;
-    max-height: 75px !important;
-    min-width: 50px !important;
-    min-height: 75px !important;
+    width: 250px !important;
+    height: 375px !important;
+    max-width: 250px !important;
+    max-height: 375px !important;
+    min-width: 250px !important;
+    min-height: 375px !important;
     display: block;
     border-radius: 8px;
     object-fit: cover !important;
@@ -389,7 +389,7 @@ body.single-fww_brand .post-inner {
 
     .fww_movie .movie-poster {
         width: 100%;
-        max-width: 50px;
+        max-width: 250px;
         margin: 0 auto;
     }
 
