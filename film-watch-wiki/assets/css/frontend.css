@@ -578,6 +578,19 @@ body.single-fww_brand .post-inner {
     margin: 0;
 }
 
+.fww-actor-layout .actor-biography .read-more-toggle,
+.fww-actor-layout .actor-biography .read-less-toggle {
+    color: #1976d2;
+    text-decoration: none;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.fww-actor-layout .actor-biography .read-more-toggle:hover,
+.fww-actor-layout .actor-biography .read-less-toggle:hover {
+    text-decoration: underline;
+}
+
 .fww-actor-layout .entry-content {
     margin-top: 3rem;
 }

@@ -84,16 +84,22 @@ while (have_posts()) : the_post();
                 <?php endif; ?>
 
                 <?php if (!empty($tmdb_data['biography'])) :
-                    // Limit biography to 200 words
                     $biography = $tmdb_data['biography'];
                     $words = explode(' ', $biography);
-                    if (count($words) > 200) {
-                        $biography = implode(' ', array_slice($words, 0, 200)) . '...';
-                    }
+                    $word_count = count($words);
+                    $show_read_more = $word_count > 200;
+                    $short_bio = $show_read_more ? implode(' ', array_slice($words, 0, 200)) : $biography;
                     ?>
                     <div class="actor-biography">
                         <h2>Biography</h2>
-                        <p><?php echo nl2br(esc_html($biography)); ?></p>
+                        <?php if ($show_read_more) : ?>
+                            <div class="bio-content">
+                                <p class="bio-short"><?php echo nl2br(esc_html($short_bio)); ?>... <a href="#" class="read-more-toggle">Read More ></a></p>
+                                <p class="bio-full" style="display:none;"><?php echo nl2br(esc_html($biography)); ?> <a href="#" class="read-less-toggle">Read Less</a></p>
+                            </div>
+                        <?php else : ?>
+                            <p><?php echo nl2br(esc_html($biography)); ?></p>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
             </div>
