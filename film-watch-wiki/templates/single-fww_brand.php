@@ -85,22 +85,32 @@ while (have_posts()) : the_post();
                                 <ul class="sightings-in-film">
                                     <?php foreach ($movie['sightings'] as $sighting) : ?>
                                         <li>
-                                            <a href="<?php echo get_permalink($sighting->watch_id); ?>">
-                                                <strong><?php echo esc_html($sighting->watch_name); ?></strong>
-                                            </a>
-                                            worn by
-                                            <a href="<?php echo get_permalink($sighting->actor_id); ?>">
-                                                <?php echo esc_html($sighting->actor_name); ?>
-                                            </a>
-                                            <?php if (!empty($sighting->character_name)) : ?>
-                                                <span class="character-note">
-                                                    (as <?php echo esc_html($sighting->character_name); ?>)
-                                                </span>
+                                            <?php if (!empty($sighting->screenshot_url)) : ?>
+                                                <div class="watch-screenshot-thumb">
+                                                    <img src="<?php echo esc_url($sighting->screenshot_url); ?>"
+                                                         alt="<?php echo esc_attr($sighting->actor_name . ' wearing ' . $sighting->watch_name); ?>"
+                                                         class="fww-sighting-thumbnail" />
+                                                </div>
                                             <?php endif; ?>
 
-                                            <?php if (!empty($sighting->scene_description)) : ?>
-                                                <p class="scene-note"><?php echo esc_html($sighting->scene_description); ?></p>
-                                            <?php endif; ?>
+                                            <div class="sighting-info">
+                                                <a href="<?php echo get_permalink($sighting->watch_id); ?>">
+                                                    <strong><?php echo esc_html($sighting->watch_name); ?></strong>
+                                                </a>
+                                                worn by
+                                                <a href="<?php echo get_permalink($sighting->actor_id); ?>">
+                                                    <?php echo esc_html($sighting->actor_name); ?>
+                                                </a>
+                                                <?php if (!empty($sighting->character_name)) : ?>
+                                                    <span class="character-note">
+                                                        (as <?php echo esc_html($sighting->character_name); ?>)
+                                                    </span>
+                                                <?php endif; ?>
+
+                                                <?php if (!empty($sighting->scene_description)) : ?>
+                                                    <p class="scene-note"><?php echo esc_html($sighting->scene_description); ?></p>
+                                                <?php endif; ?>
+                                            </div>
                                         </li>
                                     <?php endforeach; ?>
                                 </ul>

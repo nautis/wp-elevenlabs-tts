@@ -97,6 +97,14 @@ while (have_posts()) : the_post();
                     <div class="watch-list">
                         <?php foreach ($watch_sightings as $sighting) : ?>
                             <div class="watch-item">
+                                <?php if (!empty($sighting->screenshot_url)) : ?>
+                                    <div class="watch-screenshot">
+                                        <img src="<?php echo esc_url($sighting->screenshot_url); ?>"
+                                             alt="<?php echo esc_attr($sighting->actor_name . ' wearing ' . $sighting->watch_name); ?>"
+                                             class="fww-sighting-screenshot" />
+                                    </div>
+                                <?php endif; ?>
+
                                 <div class="watch-details">
                                     <h3 class="watch-model">
                                         <a href="<?php echo get_permalink($sighting->brand_id); ?>">

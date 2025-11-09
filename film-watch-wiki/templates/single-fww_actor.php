@@ -69,17 +69,27 @@ while (have_posts()) : the_post();
                                 <ul class="watches-in-film">
                                     <?php foreach ($movie['watches'] as $sighting) : ?>
                                         <li>
-                                            <a href="<?php echo get_permalink($sighting->brand_id); ?>">
-                                                <?php echo esc_html($sighting->brand_name); ?>
-                                            </a>
-                                            <a href="<?php echo get_permalink($sighting->watch_id); ?>">
-                                                <?php echo esc_html($sighting->watch_name); ?>
-                                            </a>
-                                            <?php if (!empty($sighting->character_name)) : ?>
-                                                <span class="character-note">
-                                                    (as <?php echo esc_html($sighting->character_name); ?>)
-                                                </span>
+                                            <?php if (!empty($sighting->screenshot_url)) : ?>
+                                                <div class="watch-screenshot-thumb">
+                                                    <img src="<?php echo esc_url($sighting->screenshot_url); ?>"
+                                                         alt="<?php echo esc_attr($sighting->watch_name); ?>"
+                                                         class="fww-sighting-thumbnail" />
+                                                </div>
                                             <?php endif; ?>
+
+                                            <div class="watch-info">
+                                                <a href="<?php echo get_permalink($sighting->brand_id); ?>">
+                                                    <?php echo esc_html($sighting->brand_name); ?>
+                                                </a>
+                                                <a href="<?php echo get_permalink($sighting->watch_id); ?>">
+                                                    <?php echo esc_html($sighting->watch_name); ?>
+                                                </a>
+                                                <?php if (!empty($sighting->character_name)) : ?>
+                                                    <span class="character-note">
+                                                        (as <?php echo esc_html($sighting->character_name); ?>)
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
                                         </li>
                                     <?php endforeach; ?>
                                 </ul>
