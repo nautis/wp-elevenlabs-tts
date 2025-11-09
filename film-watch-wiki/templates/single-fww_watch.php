@@ -45,6 +45,22 @@ while (have_posts()) : the_post();
         <div class="fww-simple-header">
             <h1 class="entry-title"><?php the_title(); ?></h1>
 
+            <?php
+            // Get brand info from first sighting
+            $brand_name = null;
+            $brand_id = null;
+            if (!empty($sightings)) {
+                $brand_name = $sightings[0]->brand_name;
+                $brand_id = $sightings[0]->brand_id;
+            }
+            ?>
+
+            <?php if (!empty($brand_name)) : ?>
+                <p class="watch-brand-link">
+                    <strong>Brand:</strong> <a href="<?php echo get_permalink($brand_id); ?>"><?php echo esc_html($brand_name); ?></a>
+                </p>
+            <?php endif; ?>
+
             <?php if (!empty($sightings)) : ?>
                 <div class="fww-stats">
                     <p><strong>Total Film Appearances:</strong> <?php echo $total_appearances; ?></p>

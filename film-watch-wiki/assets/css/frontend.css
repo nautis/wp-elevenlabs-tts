@@ -496,3 +496,18 @@ body.single-fww_brand .post-inner {
 .fww-simple-layout .movie-meta-simple p {
     margin: 0.5rem 0;
 }
+
+/* Watch brand link */
+.fww-simple-layout .watch-brand-link {
+    margin: 0.75rem 0 1rem 0;
+    font-size: 1.05em;
+}
+
+.fww-simple-layout .watch-brand-link a {
+    color: #1976d2;
+    text-decoration: none;
+}
+
+.fww-simple-layout .watch-brand-link a:hover {
+    text-decoration: underline;
+}
