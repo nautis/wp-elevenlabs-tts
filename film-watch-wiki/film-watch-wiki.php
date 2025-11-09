@@ -100,7 +100,7 @@ class Film_Watch_Wiki {
      */
     public function add_image_sizes() {
         // Movie poster size (2:3 aspect ratio)
-        add_image_size('fww-poster', 320, 480, true);
+        add_image_size('fww-poster', 250, 375, true);
     }
 
     /**
