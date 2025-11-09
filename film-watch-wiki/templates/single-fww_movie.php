@@ -123,12 +123,27 @@ while (have_posts()) : the_post();
 
                                 <div class="watch-details">
                                     <h3 class="watch-model">
-                                        <a href="<?php echo get_permalink($sighting->brand_id); ?>">
-                                            <?php echo esc_html($sighting->brand_name); ?>
-                                        </a>
-                                        <a href="<?php echo get_permalink($sighting->watch_id); ?>">
-                                            <?php echo esc_html($sighting->watch_name); ?>
-                                        </a>
+                                        <?php
+                                        // Check if watch name already starts with brand name to avoid duplication
+                                        if (stripos($sighting->watch_name, $sighting->brand_name) === 0) {
+                                            // Watch name includes brand, just show watch name with link
+                                            ?>
+                                            <a href="<?php echo get_permalink($sighting->watch_id); ?>">
+                                                <?php echo esc_html($sighting->watch_name); ?>
+                                            </a>
+                                            <?php
+                                        } else {
+                                            // Watch name doesn't include brand, show both with separate links
+                                            ?>
+                                            <a href="<?php echo get_permalink($sighting->brand_id); ?>">
+                                                <?php echo esc_html($sighting->brand_name); ?>
+                                            </a>
+                                            <a href="<?php echo get_permalink($sighting->watch_id); ?>">
+                                                <?php echo esc_html($sighting->watch_name); ?>
+                                            </a>
+                                            <?php
+                                        }
+                                        ?>
                                     </h3>
 
                                     <p class="watch-worn-by">
