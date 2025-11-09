@@ -83,44 +83,15 @@ while (have_posts()) : the_post();
                     </div>
                 <?php endif; ?>
 
-                <?php if (!empty($tmdb_data['biography'])) :
-                    $biography = $tmdb_data['biography'];
-                    // Use str_word_count to properly count words
-                    $word_count = str_word_count($biography);
-                    $show_read_more = $word_count > 200;
-
-                    if ($show_read_more) {
-                        // Use str_word_count with flag 2 to get word positions (matches str_word_count's definition)
-                        $words_with_positions = str_word_count($biography, 2);
-
-                        if (count($words_with_positions) >= 200) {
-                            // Get the positions array
-                            $positions = array_keys($words_with_positions);
-                            // Get the byte position where the 200th word starts
-                            $word_200_start = $positions[199]; // 0-indexed
-                            // Get the 200th word itself
-                            $word_200 = $words_with_positions[$word_200_start];
-                            // Calculate where the 200th word ends (in bytes)
-                            $cutoff_bytes = $word_200_start + strlen($word_200);
-                            // Use mb_strcut to cut at byte position while preserving UTF-8
-                            $short_bio = mb_strcut($biography, 0, $cutoff_bytes, 'UTF-8');
-                        } else {
-                            $short_bio = $biography;
-                        }
-                    } else {
-                        $short_bio = $biography;
-                    }
-                    ?>
+                <?php if (!empty($tmdb_data['biography'])) : ?>
                     <div class="actor-biography">
                         <h2>Biography</h2>
-                        <?php if ($show_read_more) : ?>
-                            <div class="bio-content">
-                                <p class="bio-short"><?php echo nl2br(esc_html($short_bio)); ?>... <a href="#" class="read-more-toggle">Read More ></a></p>
-                                <p class="bio-full" style="display:none;"><?php echo nl2br(esc_html($biography)); ?> <a href="#" class="read-less-toggle">Read Less</a></p>
-                            </div>
-                        <?php else : ?>
-                            <p><?php echo nl2br(esc_html($biography)); ?></p>
-                        <?php endif; ?>
+                        <div id="actor-bio-<?php echo $post_id; ?>" class="bio-container" data-word-limit="200">
+                            <?php echo nl2br(esc_html($tmdb_data['biography'])); ?>
+                        </div>
+                        <button class="bio-toggle-btn hidden" data-target="actor-bio-<?php echo $post_id; ?>" aria-expanded="false">
+                            Read More
+                        </button>
                     </div>
                 <?php endif; ?>
             </div>

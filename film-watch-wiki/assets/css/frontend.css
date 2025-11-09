@@ -573,22 +573,39 @@ body.single-fww_brand .post-inner {
     margin: 0 0 0.75rem 0;
 }
 
-.fww-actor-layout .actor-biography p {
+.fww-actor-layout .actor-biography .bio-container {
     line-height: 1.6;
     margin: 0;
 }
 
-.fww-actor-layout .actor-biography .read-more-toggle,
-.fww-actor-layout .actor-biography .read-less-toggle {
-    color: #1976d2;
-    text-decoration: none;
-    font-weight: 600;
-    cursor: pointer;
+.fww-actor-layout .actor-biography .bio-preview,
+.fww-actor-layout .actor-biography .bio-full {
+    line-height: 1.6;
+    white-space: pre-wrap;
 }
 
-.fww-actor-layout .actor-biography .read-more-toggle:hover,
-.fww-actor-layout .actor-biography .read-less-toggle:hover {
-    text-decoration: underline;
+.fww-actor-layout .actor-biography .hidden {
+    display: none;
+}
+
+.fww-actor-layout .actor-biography .bio-toggle-btn {
+    margin-top: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: #1976d2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.95em;
+    font-weight: 600;
+}
+
+.fww-actor-layout .actor-biography .bio-toggle-btn:hover {
+    background: #1565c0;
+}
+
+.fww-actor-layout .actor-biography .bio-toggle-btn.hidden {
+    display: none;
 }
 
 .fww-actor-layout .entry-content {
