@@ -36,6 +36,7 @@ while (have_posts()) : the_post();
         if (!isset($movies_data[$sighting->movie_id])) {
             $movies_data[$sighting->movie_id] = array(
                 'movie_title' => $sighting->movie_title,
+                'movie_year' => $sighting->movie_year,
                 'movie_id' => $sighting->movie_id,
                 'watches' => array()
             );
@@ -108,6 +109,9 @@ while (have_posts()) : the_post();
                         <li>
                             <strong><a href="<?php echo get_permalink($movie['movie_id']); ?>">
                                 <?php echo esc_html($movie['movie_title']); ?>
+                                <?php if (!empty($movie['movie_year'])) : ?>
+                                    (<?php echo esc_html($movie['movie_year']); ?>)
+                                <?php endif; ?>
                             </a></strong>
                             <?php
                             $watch_list = array();

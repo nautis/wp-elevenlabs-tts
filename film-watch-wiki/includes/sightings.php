@@ -398,10 +398,12 @@ class FWW_Sightings {
         $query = $wpdb->prepare("
             SELECT s.*,
                    m.post_title as movie_title,
+                   my.meta_value as movie_year,
                    w.post_title as watch_name,
                    b.post_title as brand_name
             FROM $table_name s
             LEFT JOIN {$wpdb->posts} m ON s.movie_id = m.ID
+            LEFT JOIN {$wpdb->postmeta} my ON m.ID = my.post_id AND my.meta_key = '_fww_year'
             LEFT JOIN {$wpdb->posts} w ON s.watch_id = w.ID
             LEFT JOIN {$wpdb->posts} b ON s.brand_id = b.ID
             WHERE s.actor_id = %d
@@ -425,10 +427,12 @@ class FWW_Sightings {
         $query = $wpdb->prepare("
             SELECT s.*,
                    m.post_title as movie_title,
+                   my.meta_value as movie_year,
                    a.post_title as actor_name,
                    b.post_title as brand_name
             FROM $table_name s
             LEFT JOIN {$wpdb->posts} m ON s.movie_id = m.ID
+            LEFT JOIN {$wpdb->postmeta} my ON m.ID = my.post_id AND my.meta_key = '_fww_year'
             LEFT JOIN {$wpdb->posts} a ON s.actor_id = a.ID
             LEFT JOIN {$wpdb->posts} b ON s.brand_id = b.ID
             WHERE s.watch_id = %d
@@ -452,10 +456,12 @@ class FWW_Sightings {
         $query = $wpdb->prepare("
             SELECT s.*,
                    m.post_title as movie_title,
+                   my.meta_value as movie_year,
                    a.post_title as actor_name,
                    w.post_title as watch_name
             FROM $table_name s
             LEFT JOIN {$wpdb->posts} m ON s.movie_id = m.ID
+            LEFT JOIN {$wpdb->postmeta} my ON m.ID = my.post_id AND my.meta_key = '_fww_year'
             LEFT JOIN {$wpdb->posts} a ON s.actor_id = a.ID
             LEFT JOIN {$wpdb->posts} w ON s.watch_id = w.ID
             WHERE s.brand_id = %d
