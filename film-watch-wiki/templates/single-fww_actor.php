@@ -85,14 +85,28 @@ while (have_posts()) : the_post();
 
                 <?php if (!empty($tmdb_data['biography'])) :
                     $biography = $tmdb_data['biography'];
-                    // Use str_word_count to properly count words (handles all whitespace)
+                    // Use str_word_count to properly count words
                     $word_count = str_word_count($biography);
                     $show_read_more = $word_count > 200;
 
                     if ($show_read_more) {
-                        // Get exactly first 200 words
-                        $words = preg_split('/\s+/', $biography, -1, PREG_SPLIT_NO_EMPTY);
-                        $short_bio = implode(' ', array_slice($words, 0, 200));
+                        // Use str_word_count with flag 2 to get word positions (matches str_word_count's definition)
+                        $words_with_positions = str_word_count($biography, 2);
+
+                        if (count($words_with_positions) >= 200) {
+                            // Get the positions array
+                            $positions = array_keys($words_with_positions);
+                            // Get the byte position where the 200th word starts
+                            $word_200_start = $positions[199]; // 0-indexed
+                            // Get the 200th word itself
+                            $word_200 = $words_with_positions[$word_200_start];
+                            // Calculate where the 200th word ends (in bytes)
+                            $cutoff_bytes = $word_200_start + strlen($word_200);
+                            // Use mb_strcut to cut at byte position while preserving UTF-8
+                            $short_bio = mb_strcut($biography, 0, $cutoff_bytes, 'UTF-8');
+                        } else {
+                            $short_bio = $biography;
+                        }
                     } else {
                         $short_bio = $biography;
                     }
