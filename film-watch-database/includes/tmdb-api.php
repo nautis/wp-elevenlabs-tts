@@ -145,7 +145,7 @@ class FWD_TMDB_API {
                     'id' => $movie['id'],
                     'title' => $movie['title'],
                     'original_title' => isset($movie['original_title']) ? $movie['original_title'] : '',
-                    'year' => !empty($movie['release_date']) ? substr($movie['release_date'], 0, 4) : '',
+                    'year' => (!empty($movie['release_date']) && strlen($movie['release_date']) >= 4) ? substr($movie['release_date'], 0, 4) : '',
                     'release_date' => isset($movie['release_date']) ? $movie['release_date'] : '',
                     'overview' => isset($movie['overview']) ? $movie['overview'] : '',
                     'poster_path' => isset($movie['poster_path']) ? $movie['poster_path'] : null,
@@ -176,7 +176,7 @@ class FWD_TMDB_API {
             'id' => $response['id'],
             'title' => $response['title'],
             'original_title' => isset($response['original_title']) ? $response['original_title'] : '',
-            'year' => !empty($response['release_date']) ? substr($response['release_date'], 0, 4) : '',
+            'year' => (!empty($response['release_date']) && strlen($response['release_date']) >= 4) ? substr($response['release_date'], 0, 4) : '',
             'release_date' => isset($response['release_date']) ? $response['release_date'] : '',
             'overview' => isset($response['overview']) ? $response['overview'] : '',
             'tagline' => isset($response['tagline']) ? $response['tagline'] : '',
@@ -314,7 +314,7 @@ class FWD_TMDB_API {
                     'id' => $movie['id'],
                     'title' => $movie['title'],
                     'character' => isset($movie['character']) ? $movie['character'] : '',
-                    'year' => !empty($movie['release_date']) ? substr($movie['release_date'], 0, 4) : '',
+                    'year' => (!empty($movie['release_date']) && strlen($movie['release_date']) >= 4) ? substr($movie['release_date'], 0, 4) : '',
                     'release_date' => isset($movie['release_date']) ? $movie['release_date'] : '',
                     'poster_path' => isset($movie['poster_path']) ? $movie['poster_path'] : null,
                     'poster_url' => isset($movie['poster_path']) ? self::get_image_url($movie['poster_path'], 'w185') : null
@@ -343,7 +343,7 @@ class FWD_TMDB_API {
             if (isset($item['media_type']) && $item['media_type'] === 'movie') {
                 $formatted[] = array(
                     'title' => $item['title'],
-                    'year' => !empty($item['release_date']) ? substr($item['release_date'], 0, 4) : ''
+                    'year' => (!empty($item['release_date']) && strlen($item['release_date']) >= 4) ? substr($item['release_date'], 0, 4) : ''
                 );
             }
         }
@@ -373,11 +373,14 @@ class FWD_TMDB_API {
         global $wpdb;
 
         // Delete all transients starting with 'fwd_tmdb_'
-        $wpdb->query(
+        // Use proper escaping to prevent SQL injection
+        $wpdb->query($wpdb->prepare(
             "DELETE FROM {$wpdb->options}
-             WHERE option_name LIKE '_transient_fwd_tmdb_%'
-             OR option_name LIKE '_transient_timeout_fwd_tmdb_%'"
-        );
+             WHERE option_name LIKE %s
+             OR option_name LIKE %s",
+            $wpdb->esc_like('_transient_fwd_tmdb_') . '%',
+            $wpdb->esc_like('_transient_timeout_fwd_tmdb_') . '%'
+        ));
 
         return true;
     }

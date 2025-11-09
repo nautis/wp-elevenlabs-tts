@@ -23,6 +23,20 @@ function fwd_parse_with_ai($text) {
         throw new Exception('Claude API key not configured. Please add it in Settings.');
     }
 
+    // Rate limiting: max 10 calls per minute per user/IP
+    $user_id = get_current_user_id();
+    $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $rate_key = 'fwd_ai_rate_limit_' . ($user_id > 0 ? 'user_' . $user_id : 'ip_' . md5($ip_address));
+
+    $calls = (int) get_transient($rate_key);
+    $max_calls = 10; // Max calls per minute
+
+    if ($calls >= $max_calls) {
+        throw new Exception('AI parsing rate limit exceeded. Please wait a minute before trying again.');
+    }
+
+    set_transient($rate_key, $calls + 1, MINUTE_IN_SECONDS);
+
     // Get brand list for context
     $brands = get_transient('fwd_brands_list');
     if (false === $brands) {
@@ -174,9 +188,10 @@ function fwd_calculate_parse_confidence($parsed) {
         $confidence -= 0.2;
     }
 
-    // 5. Year is unrealistic for films
-    if ($parsed['year'] < 1888 || $parsed['year'] > date('Y') + 2) {
-        $confidence -= 0.3;
+    // 5. Year is unrealistic for films (1888 = first motion picture)
+    // Allow only 1 year in the future for announced films
+    if ($parsed['year'] < 1888 || $parsed['year'] > date('Y') + 1) {
+        $confidence -= 0.4; // Increased penalty for unrealistic years
     }
 
     return max(0.0, min(1.0, $confidence));

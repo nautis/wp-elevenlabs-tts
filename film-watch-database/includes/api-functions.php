@@ -196,16 +196,13 @@ function fwd_add_entry($entry_text, $narrative = '', $image_url = '', $confidenc
 function fwd_ajax_search() {
     fwd_validate_ajax_request(false);
 
-    if (!isset($_POST['query_type']) || !isset($_POST['search_term'])) {
+    // Use empty() instead of isset() for better validation
+    if (empty($_POST['query_type']) || empty($_POST['search_term'])) {
         wp_send_json_error(array('message' => 'Missing required parameters'));
     }
 
     $query_type = sanitize_text_field($_POST['query_type']);
     $search_term = sanitize_text_field($_POST['search_term']);
-
-    if (empty($search_term)) {
-        wp_send_json_error(array('message' => 'Search term is required'));
-    }
 
     $result = null;
     switch ($query_type) {

@@ -617,7 +617,15 @@ function fwd_get_all_records($page = 1, $per_page = 20, $search = '', $sort_colu
         );
     }
 
-    // Map column names to SQL table aliases (whitelist for security)
+    // Strict whitelist validation for sort column and order (prevent SQL injection)
+    $allowed_columns = array('faw_id', 'title', 'year', 'actor_name', 'character_name', 'brand_name', 'model_reference');
+    $allowed_orders = array('asc', 'desc');
+
+    // Validate inputs against whitelist first
+    $validated_column = in_array($sort_column, $allowed_columns, true) ? $sort_column : 'title';
+    $validated_order = in_array(strtolower($sort_order), $allowed_orders, true) ? strtolower($sort_order) : 'asc';
+
+    // Map validated column names to SQL table aliases
     $column_map = array(
         'faw_id' => 'faw.faw_id',
         'title' => 'f.title',
@@ -628,9 +636,9 @@ function fwd_get_all_records($page = 1, $per_page = 20, $search = '', $sort_colu
         'model_reference' => 'w.model_reference'
     );
 
-    // Validate sort column and order
-    $order_column = isset($column_map[$sort_column]) ? $column_map[$sort_column] : 'f.title';
-    $order_direction = (strtolower($sort_order) === 'desc') ? 'DESC' : 'ASC';
+    // Now safe to use - already validated
+    $order_column = $column_map[$validated_column];
+    $order_direction = strtoupper($validated_order);
 
     // Get total count
     $total = $wpdb->get_var("

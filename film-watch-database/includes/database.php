@@ -11,6 +11,16 @@ if (!defined('ABSPATH')) {
 
 class FWD_Database {
 
+    // Cache duration constants
+    private const CACHE_DURATION_STATS = HOUR_IN_SECONDS;
+    private const CACHE_DURATION_BRANDS = DAY_IN_SECONDS;
+    private const CACHE_DURATION_SEARCH = HOUR_IN_SECONDS;
+    private const CACHE_DURATION_MOVIES_LIST = DAY_IN_SECONDS;
+
+    // Query limit constants
+    private const MAX_MOVIES_LIST_LIMIT = 2000;
+
+    // Database table properties
     private $table_films;
     private $table_brands;
     private $table_watches;
@@ -289,8 +299,14 @@ class FWD_Database {
         }
 
         try {
-            // Read brands from file
-            $brands_raw = file($brands_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            // Read brands from file with error handling
+            $brands_raw = @file($brands_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
+            if ($brands_raw === false) {
+                $error = error_get_last();
+                error_log('FWD: Failed to read watch-brands.txt - ' . ($error['message'] ?? 'Unknown error'));
+                return;
+            }
 
             // Clean and deduplicate
             $brands = array();
@@ -399,7 +415,7 @@ class FWD_Database {
         if (false === $brands) {
             $brands = $wpdb->get_col("SELECT brand_name FROM {$this->table_brands} ORDER BY LENGTH(brand_name) DESC");
             // Cache for 24 hours (brands don't change often)
-            set_transient('fwd_brands_list', $brands, DAY_IN_SECONDS);
+            set_transient('fwd_brands_list', $brands, self::CACHE_DURATION_BRANDS);
         }
 
         $brand = null;
@@ -487,11 +503,19 @@ class FWD_Database {
                 $data['title'], $data['year']
             ));
 
+            if ($wpdb->last_error) {
+                error_log('FWD Database: Film insert error - ' . $wpdb->last_error);
+            }
+
             // Insert brand
             $result = $wpdb->query($wpdb->prepare(
                 "INSERT IGNORE INTO {$this->table_brands} (brand_name) VALUES (%s)",
                 $data['brand']
             ));
+
+            if ($wpdb->last_error) {
+                error_log('FWD Database: Brand insert error - ' . $wpdb->last_error);
+            }
 
             // If a new brand was inserted, invalidate the brands cache
             if ($result) {
@@ -650,7 +674,10 @@ class FWD_Database {
             return true;
 
         } catch (Exception $e) {
-            $wpdb->query('ROLLBACK');
+            $rollback_result = $wpdb->query('ROLLBACK');
+            if ($rollback_result === false) {
+                error_log('FWD Database: ROLLBACK failed - ' . $wpdb->last_error);
+            }
             throw $e;
         }
     }
@@ -882,7 +909,7 @@ class FWD_Database {
         );
 
         // Cache stats for 1 hour
-        set_transient('fwd_database_stats', $stats, HOUR_IN_SECONDS);
+        set_transient('fwd_database_stats', $stats, self::CACHE_DURATION_STATS);
 
         return $stats;
     }

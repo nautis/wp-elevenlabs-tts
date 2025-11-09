@@ -189,7 +189,7 @@ class Film_Watch_Database {
      */
     public function enqueue_admin_assets($hook) {
         // Check if we're on our settings page (works for both regular and network admin)
-        $page = isset($_GET['page']) ? $_GET['page'] : '';
+        $page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : '';
         if ($page !== 'film-watch-database') {
             return;
         }
