@@ -42,26 +42,11 @@ while (have_posts()) : the_post();
 
         <div class="fww-simple-header">
             <h1 class="entry-title"><?php the_title(); ?></h1>
-
-            <?php if (!empty($watch_models)) : ?>
-                <div class="fww-stats">
-                    <p><strong><?php echo get_the_title(); ?></strong> has <strong><?php echo count($watch_models); ?></strong> watch <?php echo count($watch_models) === 1 ? 'model' : 'models'; ?> documented in Film Watch Wiki.</p>
-                    <p><strong>Total Film Appearances:</strong> <?php echo $total_appearances; ?></p>
-                </div>
-            <?php endif; ?>
         </div>
 
         <div class="entry-content">
-            <?php
-            $content = get_the_content();
-            if (!empty(trim($content))) : ?>
-                <div class="fww-description">
-                    <?php the_content(); ?>
-                </div>
-            <?php endif; ?>
-
             <?php if (!empty($watch_models)) : ?>
-                <h2>Watch Models</h2>
+                <h2>Models</h2>
                 <ul class="fww-simple-list">
                     <?php
                     $brand_name = get_the_title();

@@ -44,26 +44,11 @@ while (have_posts()) : the_post();
 
         <div class="fww-simple-header">
             <h1 class="entry-title"><?php the_title(); ?></h1>
-
-            <?php if (!empty($sightings)) : ?>
-                <div class="fww-stats">
-                    <p><strong>Total Watch Sightings:</strong> <?php echo $total_appearances; ?></p>
-                    <p><strong>Films:</strong> <?php echo $total_movies; ?></p>
-                </div>
-            <?php endif; ?>
         </div>
 
         <div class="entry-content">
-            <?php
-            $content = get_the_content();
-            if (!empty(trim($content))) : ?>
-                <div class="fww-description">
-                    <?php the_content(); ?>
-                </div>
-            <?php endif; ?>
-
             <?php if (!empty($movies_data)) : ?>
-                <h2>Watch Sightings by Film</h2>
+                <h2>Films</h2>
                 <ul class="fww-simple-list">
                     <?php foreach ($movies_data as $movie) : ?>
                         <li>
