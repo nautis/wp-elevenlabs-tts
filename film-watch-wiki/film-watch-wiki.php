@@ -85,6 +85,9 @@ class Film_Watch_Wiki {
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
 
+        // Add CSS variable overrides in head with highest priority
+        add_action('wp_head', array($this, 'add_css_variable_overrides'), 999);
+
         // Add custom image sizes
         add_action('after_setup_theme', array($this, 'add_image_sizes'));
 
@@ -155,6 +158,29 @@ class Film_Watch_Wiki {
             FWW_VERSION,
             true
         );
+    }
+
+    /**
+     * Add CSS variable overrides in head
+     * This runs at priority 999 on wp_head to load after all theme CSS
+     */
+    public function add_css_variable_overrides() {
+        // Only on our custom post types
+        if (!is_singular(array('fww_movie', 'fww_actor', 'fww_watch', 'fww_brand'))) {
+            return;
+        }
+        ?>
+        <style id="fww-css-variables">
+            body.single-fww_movie,
+            body.single-fww_actor,
+            body.single-fww_watch,
+            body.single-fww_brand {
+                --site-width: 1250px !important;
+                --content-width: 1250px !important;
+                --content-max-width: 1250px !important;
+            }
+        </style>
+        <?php
     }
 
     /**

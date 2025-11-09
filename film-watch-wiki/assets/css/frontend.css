@@ -4,6 +4,94 @@
  */
 
 /* ========================================
+   Override Theme Width Constraints
+   ======================================== */
+
+/* Override theme CSS variables for our custom post types */
+body.single-fww_movie,
+body.single-fww_actor,
+body.single-fww_watch,
+body.single-fww_brand {
+    --site-width: 1250px !important;
+    --content-width: 1250px !important;
+    --content-max-width: 1250px !important;
+}
+
+/* Match archive/category page width (1250px) - target all possible containers */
+body.single-fww_movie .site-main,
+body.single-fww_movie #primary,
+body.single-fww_movie .content-area,
+body.single-fww_movie main,
+body.single-fww_movie article,
+body.single-fww_movie article.fww_movie,
+body.single-fww_movie article.type-fww_movie,
+body.single-fww_movie .entry-content,
+body.single-fww_actor .site-main,
+body.single-fww_actor #primary,
+body.single-fww_actor .content-area,
+body.single-fww_actor article,
+body.single-fww_actor article.fww_actor,
+body.single-fww_actor article.type-fww_actor,
+body.single-fww_actor .entry-content,
+body.single-fww_watch .site-main,
+body.single-fww_watch #primary,
+body.single-fww_watch .content-area,
+body.single-fww_watch article,
+body.single-fww_watch article.fww_watch,
+body.single-fww_watch article.type-fww_watch,
+body.single-fww_watch .entry-content,
+body.single-fww_brand .site-main,
+body.single-fww_brand #primary,
+body.single-fww_brand .content-area,
+body.single-fww_brand article,
+body.single-fww_brand article.fww_brand,
+body.single-fww_brand article.type-fww_brand,
+body.single-fww_brand .entry-content {
+    max-width: 1250px !important;
+    width: 100% !important;
+}
+
+/* Nuclear option: Target articles directly by post type class with highest specificity */
+article.fww_movie.type-fww_movie,
+article.fww_actor.type-fww_actor,
+article.fww_watch.type-fww_watch,
+article.fww_brand.type-fww_brand {
+    max-width: 1250px !important;
+    width: 100% !important;
+}
+
+/* Use ID selector to override theme (IDs have highest specificity) */
+article[id^="post-"].fww_movie,
+article[id^="post-"].type-fww_movie,
+article[id^="post-"].fww_actor,
+article[id^="post-"].type-fww_actor,
+article[id^="post-"].fww_watch,
+article[id^="post-"].type-fww_watch,
+article[id^="post-"].fww_brand,
+article[id^="post-"].type-fww_brand {
+    max-width: 1250px !important;
+    width: 100% !important;
+}
+
+/* Target the inner wrapper that theme uses */
+body.single-fww_movie .post-inner,
+body.single-fww_actor .post-inner,
+body.single-fww_watch .post-inner,
+body.single-fww_brand .post-inner {
+    max-width: 1250px !important;
+    width: 100% !important;
+}
+
+/* Allow full width for watch sightings section within entry-content */
+.fww_movie .movie-watches,
+.fww_movie .entry-content > *,
+.fww_actor .entry-content > *,
+.fww_watch .entry-content > *,
+.fww_brand .entry-content > * {
+    max-width: 100% !important;
+}
+
+/* ========================================
    Movie Header (Poster + Info Side-by-Side)
    ======================================== */
 
@@ -26,8 +114,11 @@
     height: 480px !important;
     max-width: 320px !important;
     max-height: 480px !important;
+    min-width: 320px !important;
+    min-height: 480px !important;
     display: block;
     border-radius: 8px;
+    object-fit: cover !important;
 }
 
 .fww_movie .movie-header-content {
