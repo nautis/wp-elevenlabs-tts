@@ -63,10 +63,18 @@ while (have_posts()) : the_post();
             <?php if (!empty($watch_models)) : ?>
                 <h2>Watch Models</h2>
                 <ul class="fww-simple-list">
-                    <?php foreach ($watch_models as $watch) : ?>
+                    <?php
+                    $brand_name = get_the_title();
+                    foreach ($watch_models as $watch) :
+                        // Strip brand name from watch name if it starts with it
+                        $display_name = $watch['name'];
+                        if (stripos($display_name, $brand_name) === 0) {
+                            $display_name = trim(substr($display_name, strlen($brand_name)));
+                        }
+                    ?>
                         <li>
                             <a href="<?php echo get_permalink($watch['id']); ?>">
-                                <?php echo esc_html($watch['name']); ?>
+                                <?php echo esc_html($display_name); ?>
                             </a>
                             - <?php echo $watch['count']; ?> <?php echo $watch['count'] === 1 ? 'appearance' : 'appearances'; ?>
                         </li>

@@ -73,8 +73,15 @@ while (have_posts()) : the_post();
                             <?php
                             $watch_list = array();
                             foreach ($movie['watches'] as $sighting) {
-                                $watch_info = '<a href="' . get_permalink($sighting->brand_id) . '">' . esc_html($sighting->brand_name) . '</a> ';
-                                $watch_info .= '<a href="' . get_permalink($sighting->watch_id) . '">' . esc_html($sighting->watch_name) . '</a>';
+                                // Check if watch name already starts with brand name
+                                if (stripos($sighting->watch_name, $sighting->brand_name) === 0) {
+                                    // Watch name includes brand, just show watch name
+                                    $watch_info = '<a href="' . get_permalink($sighting->watch_id) . '">' . esc_html($sighting->watch_name) . '</a>';
+                                } else {
+                                    // Watch name doesn't include brand, show both
+                                    $watch_info = '<a href="' . get_permalink($sighting->brand_id) . '">' . esc_html($sighting->brand_name) . '</a> ';
+                                    $watch_info .= '<a href="' . get_permalink($sighting->watch_id) . '">' . esc_html($sighting->watch_name) . '</a>';
+                                }
                                 if (!empty($sighting->character_name)) {
                                     $watch_info .= ' (as ' . esc_html($sighting->character_name) . ')';
                                 }
