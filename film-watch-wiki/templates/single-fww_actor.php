@@ -85,10 +85,17 @@ while (have_posts()) : the_post();
 
                 <?php if (!empty($tmdb_data['biography'])) :
                     $biography = $tmdb_data['biography'];
-                    $words = explode(' ', $biography);
-                    $word_count = count($words);
+                    // Use str_word_count to properly count words (handles all whitespace)
+                    $word_count = str_word_count($biography);
                     $show_read_more = $word_count > 200;
-                    $short_bio = $show_read_more ? implode(' ', array_slice($words, 0, 200)) : $biography;
+
+                    if ($show_read_more) {
+                        // Split on any whitespace to properly handle newlines
+                        $words = preg_split('/\s+/', $biography);
+                        $short_bio = implode(' ', array_slice($words, 0, 200));
+                    } else {
+                        $short_bio = $biography;
+                    }
                     ?>
                     <div class="actor-biography">
                         <h2>Biography</h2>
