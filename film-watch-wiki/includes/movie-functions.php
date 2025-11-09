@@ -25,11 +25,26 @@ function fww_get_movie_data($post_id) {
 
     // If no cached data or it's old, fetch from TMDB
     if (empty($tmdb_data) && !empty($tmdb_id)) {
-        $tmdb_data = FWW_TMDB_API::get_movie($tmdb_id);
+        // Use transient locking to prevent race conditions
+        $lock_key = 'fww_fetching_' . $tmdb_id;
 
-        if ($tmdb_data) {
-            // Cache the data
-            update_post_meta($post_id, '_fww_tmdb_data', $tmdb_data);
+        if (false === get_transient($lock_key)) {
+            // Set lock for 30 seconds
+            set_transient($lock_key, true, 30);
+
+            $tmdb_data = FWW_TMDB_API::get_movie($tmdb_id);
+
+            if ($tmdb_data && !is_wp_error($tmdb_data)) {
+                // Cache the data
+                update_post_meta($post_id, '_fww_tmdb_data', $tmdb_data);
+            }
+
+            // Release lock
+            delete_transient($lock_key);
+        } else {
+            // Another process is fetching, wait and retry
+            sleep(1);
+            $tmdb_data = get_post_meta($post_id, '_fww_tmdb_data', true);
         }
     }
 
@@ -46,14 +61,19 @@ function fww_get_movie_data($post_id) {
  * Queries the existing wp_fwd_film_actor_watch table
  *
  * @param int $film_id The film ID from the old database
+ * @param int $limit Maximum number of results to return (default: 50)
+ * @param int $offset Number of results to skip (default: 0)
  * @return array Array of watch sightings
  */
-function fww_get_movie_watch_sightings($film_id) {
+function fww_get_movie_watch_sightings($film_id, $limit = 50, $offset = 0) {
     if (empty($film_id)) {
         return array();
     }
 
     global $wpdb;
+
+    $limit = intval($limit);
+    $offset = intval($offset);
 
     $query = $wpdb->prepare("
         SELECT
@@ -73,7 +93,8 @@ function fww_get_movie_watch_sightings($film_id) {
         LEFT JOIN {$wpdb->prefix}fwd_brands b ON w.brand_id = b.brand_id
         WHERE faw.film_id = %d
         ORDER BY a.actor_name
-    ", $film_id);
+        LIMIT %d OFFSET %d
+    ", $film_id, $limit, $offset);
 
     return $wpdb->get_results($query);
 }
@@ -232,10 +253,22 @@ function fww_download_and_set_poster($post_id, $poster_path, $movie_title) {
     require_once(ABSPATH . 'wp-admin/includes/file.php');
     require_once(ABSPATH . 'wp-admin/includes/image.php');
 
+    // Set reasonable file size limit (5MB)
+    $max_file_size = 5 * 1024 * 1024;
+
     // Download to temp file
     $tmp = download_url($poster_url);
 
     if (is_wp_error($tmp)) {
+        return false;
+    }
+
+    // Check file size
+    if (filesize($tmp) > $max_file_size) {
+        unlink($tmp);
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('FWW: Poster image too large: ' . filesize($tmp) . ' bytes (max: ' . $max_file_size . ')');
+        }
         return false;
     }
 
@@ -250,7 +283,11 @@ function fww_download_and_set_poster($post_id, $poster_path, $movie_title) {
 
     // Clean up temp file
     if (file_exists($tmp)) {
-        @unlink($tmp);
+        if (!unlink($tmp)) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('FWW: Failed to delete temporary file: ' . $tmp);
+            }
+        }
     }
 
     if (is_wp_error($attachment_id)) {

@@ -87,25 +87,34 @@ class FWW_Template_Loader {
      * This runs later in the template hierarchy as a fallback
      */
     public static function force_template_include($template) {
-        // Debug logging
-        error_log('FWW Template Filter Running - Template: ' . $template);
-        error_log('FWW is_singular check: ' . (is_singular(array('fww_movie', 'fww_actor', 'fww_watch')) ? 'YES' : 'NO'));
-        error_log('FWW post type: ' . get_post_type());
+        // Debug logging (only in debug mode)
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('FWW Template Filter Running - Template: ' . $template);
+            error_log('FWW is_singular check: ' . (is_singular(array('fww_movie', 'fww_actor', 'fww_watch')) ? 'YES' : 'NO'));
+            error_log('FWW post type: ' . get_post_type());
+        }
 
         if (is_singular(array('fww_movie', 'fww_actor', 'fww_watch'))) {
             $post_type = get_post_type();
 
             $plugin_template = FWW_PLUGIN_DIR . 'templates/single-' . $post_type . '.php';
-            error_log('FWW Plugin template path: ' . $plugin_template);
-            error_log('FWW Template exists: ' . (file_exists($plugin_template) ? 'YES' : 'NO'));
+
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('FWW Plugin template path: ' . $plugin_template);
+                error_log('FWW Template exists: ' . (file_exists($plugin_template) ? 'YES' : 'NO'));
+            }
 
             if (file_exists($plugin_template)) {
-                error_log('FWW Returning plugin template');
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('FWW Returning plugin template');
+                }
                 return $plugin_template;
             }
         }
 
-        error_log('FWW Returning original template');
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('FWW Returning original template');
+        }
         return $template;
     }
 }

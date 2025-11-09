@@ -22,6 +22,14 @@ class FWW_TMDB_API {
     const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/';
 
     /**
+     * Configuration constants
+     */
+    const DEFAULT_CACHE_DURATION = 86400; // 24 hours in seconds
+    const API_TIMEOUT = 20; // seconds
+    const DEFAULT_CAST_LIMIT = 10;
+    const LOCK_TIMEOUT = 30; // seconds for transient locks
+
+    /**
      * Get API key from WordPress options
      */
     private static function get_api_key() {
@@ -39,7 +47,7 @@ class FWW_TMDB_API {
      * Get cache duration from WordPress options (in seconds)
      */
     private static function get_cache_duration() {
-        return intval(get_option('fww_cache_duration', 86400));
+        return intval(get_option('fww_cache_duration', self::DEFAULT_CACHE_DURATION));
     }
 
     /**
@@ -74,7 +82,7 @@ class FWW_TMDB_API {
 
         // Make API request
         $response = wp_remote_get($url, array(
-            'timeout' => 20,
+            'timeout' => self::API_TIMEOUT,
             'headers' => array(
                 'Authorization' => 'Bearer ' . $api_key,
                 'Content-Type' => 'application/json'
@@ -165,7 +173,13 @@ class FWW_TMDB_API {
      * @return array|WP_Error Movie details or error
      */
     public static function get_movie($movie_id) {
-        $response = self::make_request('movie/' . intval($movie_id));
+        // Validate movie ID
+        if (empty($movie_id) || !is_numeric($movie_id) || $movie_id <= 0) {
+            return new WP_Error('invalid_movie_id', 'Invalid movie ID provided');
+        }
+
+        $movie_id = intval($movie_id);
+        $response = self::make_request('movie/' . $movie_id);
 
         if (is_wp_error($response)) {
             return $response;
@@ -200,7 +214,13 @@ class FWW_TMDB_API {
      * @return string Certification or empty string
      */
     public static function get_us_certification($movie_id) {
-        $response = self::make_request('movie/' . intval($movie_id) . '/release_dates');
+        // Validate movie ID
+        if (empty($movie_id) || !is_numeric($movie_id) || $movie_id <= 0) {
+            return '';
+        }
+
+        $movie_id = intval($movie_id);
+        $response = self::make_request('movie/' . $movie_id . '/release_dates');
 
         if (is_wp_error($response) || !isset($response['results'])) {
             return '';
@@ -227,8 +247,14 @@ class FWW_TMDB_API {
      * @param int $limit Maximum number of cast members to return (default: 10)
      * @return array|WP_Error Array of cast members or error
      */
-    public static function get_movie_credits($movie_id, $limit = 10) {
-        $response = self::make_request('movie/' . intval($movie_id) . '/credits');
+    public static function get_movie_credits($movie_id, $limit = self::DEFAULT_CAST_LIMIT) {
+        // Validate movie ID
+        if (empty($movie_id) || !is_numeric($movie_id) || $movie_id <= 0) {
+            return new WP_Error('invalid_movie_id', 'Invalid movie ID provided');
+        }
+
+        $movie_id = intval($movie_id);
+        $response = self::make_request('movie/' . $movie_id . '/credits');
 
         if (is_wp_error($response)) {
             return $response;
@@ -306,7 +332,13 @@ class FWW_TMDB_API {
      * @return array|WP_Error Person details or error
      */
     public static function get_person($person_id) {
-        $response = self::make_request('person/' . intval($person_id));
+        // Validate person ID
+        if (empty($person_id) || !is_numeric($person_id) || $person_id <= 0) {
+            return new WP_Error('invalid_person_id', 'Invalid person ID provided');
+        }
+
+        $person_id = intval($person_id);
+        $response = self::make_request('person/' . $person_id);
 
         if (is_wp_error($response)) {
             return $response;
@@ -331,7 +363,13 @@ class FWW_TMDB_API {
      * @return array|WP_Error Array of movie credits or error
      */
     public static function get_person_movie_credits($person_id) {
-        $response = self::make_request('person/' . intval($person_id) . '/movie_credits');
+        // Validate person ID
+        if (empty($person_id) || !is_numeric($person_id) || $person_id <= 0) {
+            return new WP_Error('invalid_person_id', 'Invalid person ID provided');
+        }
+
+        $person_id = intval($person_id);
+        $response = self::make_request('person/' . $person_id . '/movie_credits');
 
         if (is_wp_error($response)) {
             return $response;
