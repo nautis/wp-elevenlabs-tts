@@ -155,6 +155,24 @@
     color: #c62828;
 }
 
+.fwd-error ul {
+    margin: 0.5rem 0 0 1.5rem;
+    padding: 0;
+}
+
+.fwd-error li {
+    margin: 0.25rem 0;
+}
+
+.fwd-help-text {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(198, 40, 40, 0.2);
+    font-size: 0.9em;
+    font-style: italic;
+    opacity: 0.9;
+}
+
 .fwd-success {
     background: #e8f5e9;
     border-left-color: #2e7d32;

@@ -525,8 +525,8 @@
                     );
                     return; // Don't reset button state yet
                 } else {
-                    showResult(resultDiv, 'fwd-error', 'Error: ' +
-                        (response.data.error || 'Unknown error occurred'));
+                    const errorMsg = response.data.error || 'Unknown error occurred';
+                    showResult(resultDiv, 'fwd-error', formatErrorMessage(errorMsg));
                 }
             },
             error: function(xhr, status, error) {
@@ -651,8 +651,8 @@
                     );
                     return; // Don't reset button state yet
                 } else {
-                    showResult(resultDiv, 'fwd-error', 'Error: ' +
-                        (response.data.error || 'Unknown error occurred'));
+                    const errorMsg = response.data.error || 'Unknown error occurred';
+                    showResult(resultDiv, 'fwd-error', formatErrorMessage(errorMsg));
                 }
             },
             error: function(xhr, status, error) {
@@ -733,6 +733,51 @@
         };
 
         reader.readAsText(file);
+    }
+
+    /**
+     * Format error message with helpful context
+     * @param {string} error - The error message
+     * @return {string} - Formatted HTML error message
+     */
+    function formatErrorMessage(error) {
+        let message = '';
+        let helpText = '';
+
+        // Parse validation errors
+        if (error.includes('Validation failed:')) {
+            const errors = error.replace('Validation failed: ', '').split('; ');
+            message = '<strong>Please fix the following issues:</strong><ul>';
+            errors.forEach(function(err) {
+                message += '<li>' + FWD_Utils.escapeHtml(err) + '</li>';
+            });
+            message += '</ul>';
+        }
+        // Handle rate limit errors
+        else if (error.includes('rate limit')) {
+            message = '<strong>Too many requests</strong><br>' + FWD_Utils.escapeHtml(error);
+            helpText = 'Please wait a moment before trying again.';
+        }
+        // Handle API key errors
+        else if (error.includes('API key')) {
+            message = '<strong>Configuration Issue</strong><br>' + FWD_Utils.escapeHtml(error);
+            helpText = 'Please contact your site administrator.';
+        }
+        // Handle parsing errors
+        else if (error.includes('Could not parse')) {
+            message = '<strong>Unable to understand entry</strong><br>' + FWD_Utils.escapeHtml(error);
+            helpText = 'Try using the Quick Entry format: Actor|Character|Brand|Model|Title|Year';
+        }
+        // Generic error
+        else {
+            message = FWD_Utils.escapeHtml(error);
+        }
+
+        if (helpText) {
+            message += '<div class="fwd-help-text">' + helpText + '</div>';
+        }
+
+        return message;
     }
 
     /**

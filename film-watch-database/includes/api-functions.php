@@ -28,6 +28,89 @@ function fwd_validate_ajax_request($require_admin = false) {
 }
 
 /**
+ * Validate entry data with comprehensive checks
+ *
+ * @param array $data Entry data to validate
+ * @return array|WP_Error Array of errors or WP_Error on validation failure
+ */
+function fwd_validate_entry_data($data) {
+    $errors = array();
+
+    // Validate actor name (required, 1-255 chars)
+    if (empty($data['actor']) || strlen($data['actor']) > 255) {
+        $errors[] = 'Actor name must be between 1 and 255 characters';
+    }
+
+    // Validate character name (required, 1-255 chars)
+    if (empty($data['character']) || strlen($data['character']) > 255) {
+        $errors[] = 'Character name must be between 1 and 255 characters';
+    }
+
+    // Validate brand name (required, 1-100 chars)
+    if (empty($data['brand']) || strlen($data['brand']) > 100) {
+        $errors[] = 'Brand name must be between 1 and 100 characters';
+    }
+
+    // Validate model reference (required, 1-255 chars)
+    if (empty($data['model']) || strlen($data['model']) > 255) {
+        $errors[] = 'Model reference must be between 1 and 255 characters';
+    }
+
+    // Validate title (required, 1-255 chars)
+    if (empty($data['title']) || strlen($data['title']) > 255) {
+        $errors[] = 'Film title must be between 1 and 255 characters';
+    }
+
+    // Validate year (1888 to next year)
+    $current_year = (int) date('Y');
+    $min_year = 1888; // First motion picture
+    $max_year = $current_year + 1; // Allow next year for announced films
+
+    if (empty($data['year']) || !is_numeric($data['year'])) {
+        $errors[] = 'Film year is required and must be a number';
+    } elseif ($data['year'] < $min_year || $data['year'] > $max_year) {
+        $errors[] = sprintf('Film year must be between %d and %d', $min_year, $max_year);
+    }
+
+    // Validate narrative (optional, max 65535 chars for TEXT field)
+    if (isset($data['narrative']) && strlen($data['narrative']) > 65535) {
+        $errors[] = 'Narrative text is too long (maximum 65,535 characters)';
+    }
+
+    // Validate image_url (optional, max 2083 chars, must be valid URL)
+    if (!empty($data['image_url'])) {
+        if (strlen($data['image_url']) > 2083) {
+            $errors[] = 'Image URL is too long (maximum 2,083 characters)';
+        } elseif (!filter_var($data['image_url'], FILTER_VALIDATE_URL)) {
+            $errors[] = 'Image URL is not a valid URL';
+        } elseif (!preg_match('/\.(jpg|jpeg|png|gif|webp)$/i', $data['image_url'])) {
+            $errors[] = 'Image URL must end with a valid image extension (.jpg, .jpeg, .png, .gif, .webp)';
+        }
+    }
+
+    // Validate source_url (optional, max 2083 chars, must be valid URL)
+    if (!empty($data['source_url'])) {
+        if (strlen($data['source_url']) > 2083) {
+            $errors[] = 'Source URL is too long (maximum 2,083 characters)';
+        } elseif (!filter_var($data['source_url'], FILTER_VALIDATE_URL)) {
+            $errors[] = 'Source URL is not a valid URL';
+        }
+    }
+
+    // Validate confidence_level (optional, max 65535 chars)
+    if (isset($data['confidence_level']) && strlen($data['confidence_level']) > 65535) {
+        $errors[] = 'Confidence level text is too long (maximum 65,535 characters)';
+    }
+
+    // Return errors array or WP_Error
+    if (!empty($errors)) {
+        return new WP_Error('validation_failed', 'Entry validation failed', $errors);
+    }
+
+    return array();
+}
+
+/**
  * Get database statistics
  */
 function fwd_get_stats() {
@@ -149,6 +232,13 @@ function fwd_add_entry($entry_text, $narrative = '', $image_url = '', $confidenc
         }
         if ($source_url) {
             $parsed['source_url'] = $source_url;
+        }
+
+        // Validate entry data before inserting
+        $validation_result = fwd_validate_entry_data($parsed);
+        if (is_wp_error($validation_result)) {
+            $errors = $validation_result->get_error_data();
+            throw new Exception('Validation failed: ' . implode('; ', $errors));
         }
 
         $db->insert_entry($parsed, $force_overwrite);
@@ -297,6 +387,14 @@ function fwd_ajax_add_quick_entry() {
 
     try {
         $parsed = fwd_parse_pipe_entry($quick_entry);
+
+        // Validate entry data before inserting
+        $validation_result = fwd_validate_entry_data($parsed);
+        if (is_wp_error($validation_result)) {
+            $errors = $validation_result->get_error_data();
+            throw new Exception('Validation failed: ' . implode('; ', $errors));
+        }
+
         $db = fwd_db();
         $db->insert_entry($parsed, $force_overwrite);
 
