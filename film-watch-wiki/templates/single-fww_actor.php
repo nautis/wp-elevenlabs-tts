@@ -52,8 +52,8 @@ while (have_posts()) : the_post();
                     <img src="<?php echo esc_url($tmdb_data['profile_url']); ?>"
                          alt="<?php echo esc_attr(get_the_title()); ?> profile photo"
                          class="actor-profile-photo"
-                         width="300"
-                         height="450" />
+                         width="250"
+                         height="375" />
                 </div>
             <?php endif; ?>
 
@@ -83,16 +83,17 @@ while (have_posts()) : the_post();
                     </div>
                 <?php endif; ?>
 
-                <?php if (!empty($tmdb_data['also_known_as']) && count($tmdb_data['also_known_as']) > 0) : ?>
-                    <div class="actor-aliases">
-                        <p><strong>Also Known As:</strong> <?php echo esc_html(implode(', ', array_slice($tmdb_data['also_known_as'], 0, 3))); ?></p>
-                    </div>
-                <?php endif; ?>
-
-                <?php if (!empty($tmdb_data['biography'])) : ?>
+                <?php if (!empty($tmdb_data['biography'])) :
+                    // Limit biography to 200 words
+                    $biography = $tmdb_data['biography'];
+                    $words = explode(' ', $biography);
+                    if (count($words) > 200) {
+                        $biography = implode(' ', array_slice($words, 0, 200)) . '...';
+                    }
+                    ?>
                     <div class="actor-biography">
                         <h2>Biography</h2>
-                        <p><?php echo nl2br(esc_html($tmdb_data['biography'])); ?></p>
+                        <p><?php echo nl2br(esc_html($biography)); ?></p>
                     </div>
                 <?php endif; ?>
             </div>

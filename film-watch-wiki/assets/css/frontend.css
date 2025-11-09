@@ -525,18 +525,18 @@ body.single-fww_brand .post-inner {
 }
 
 .fww-actor-layout .actor-profile {
-    flex: 0 0 300px !important;
-    width: 300px !important;
-    max-width: 300px !important;
+    flex: 0 0 250px !important;
+    width: 250px !important;
+    max-width: 250px !important;
 }
 
 .fww-actor-layout .actor-profile img {
-    width: 300px !important;
-    height: 450px !important;
-    max-width: 300px !important;
-    max-height: 450px !important;
-    min-width: 300px !important;
-    min-height: 450px !important;
+    width: 250px !important;
+    height: 375px !important;
+    max-width: 250px !important;
+    max-height: 375px !important;
+    min-width: 250px !important;
+    min-height: 375px !important;
     display: block;
     border-radius: 8px;
     object-fit: cover !important;
@@ -561,16 +561,6 @@ body.single-fww_brand .post-inner {
 .fww-actor-layout .actor-bio-info p {
     margin: 0.5rem 0;
     font-size: 1.05em;
-}
-
-.fww-actor-layout .actor-aliases {
-    margin: 0.75rem 0 1rem 0;
-    opacity: 0.8;
-}
-
-.fww-actor-layout .actor-aliases p {
-    margin: 0;
-    font-size: 0.95em;
 }
 
 .fww-actor-layout .actor-biography {
@@ -627,7 +617,7 @@ body.single-fww_brand .post-inner {
 
     .fww-actor-layout .actor-profile {
         width: 100%;
-        max-width: 300px;
+        max-width: 250px;
         margin: 0 auto;
     }
 }
