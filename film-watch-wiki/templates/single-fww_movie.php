@@ -48,8 +48,8 @@ while (have_posts()) : the_post();
                     <img src="<?php echo esc_url($poster_url); ?>"
                          alt="<?php echo esc_attr(get_the_title()); ?> poster"
                          class="fww-movie-poster"
-                         width="320"
-                         height="480" />
+                         width="50"
+                         height="75" />
                 </div>
             <?php endif; ?>
 

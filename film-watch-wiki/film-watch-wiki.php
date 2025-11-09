@@ -3,7 +3,7 @@
  * Plugin Name: Film Watch Wiki
  * Plugin URI: https://github.com/nautis/watch-utils
  * Description: Wiki-style WordPress plugin for movies, actors, and watches with TMDB API integration. Creates dedicated pages for each entity with rich relationships.
- * Version: 1.1.2
+ * Version: 1.1.4
  * Author: Your Name
  * Author URI: https://github.com/nautis
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('FWW_VERSION', '1.1.2');
+define('FWW_VERSION', '1.1.4');
 define('FWW_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('FWW_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('FWW_PLUGIN_BASENAME', plugin_basename(__FILE__));
