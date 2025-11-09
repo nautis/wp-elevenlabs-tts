@@ -160,10 +160,19 @@ class Film_Watch_Database {
             wp_enqueue_media();
         }
 
+        // Enqueue shared utilities first
+        wp_enqueue_script(
+            'fwd-utils',
+            FWD_PLUGIN_URL . 'assets/js/fwd-utils.js',
+            array(),
+            FWD_VERSION,
+            false
+        );
+
         wp_enqueue_script(
             'fwd-frontend',
             FWD_PLUGIN_URL . 'assets/js/frontend.js',
-            array('jquery'),
+            array('jquery', 'fwd-utils'),
             FWD_VERSION,
             true
         );
@@ -196,10 +205,19 @@ class Film_Watch_Database {
             FWD_VERSION
         );
 
+        // Enqueue shared utilities
+        wp_enqueue_script(
+            'fwd-utils',
+            FWD_PLUGIN_URL . 'assets/js/fwd-utils.js',
+            array(),
+            FWD_VERSION,
+            false
+        );
+
         wp_enqueue_script(
             'fwd-frontend',
             FWD_PLUGIN_URL . 'assets/js/frontend.js',
-            array('jquery'),
+            array('jquery', 'fwd-utils'),
             FWD_VERSION,
             true
         );

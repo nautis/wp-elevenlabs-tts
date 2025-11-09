@@ -9,6 +9,74 @@ if (!defined('ABSPATH')) {
 }
 
 /**
+ * Render entry HTML for display (consolidates duplicate rendering code)
+ *
+ * @param array $entry Entry data with keys: image_url, brand, model, year, title, actor, character, narrative, confidence_level, source
+ * @param string $brand_name Optional: Override brand name (for brand shortcode where brand is constant)
+ * @return string HTML output
+ */
+function fwd_render_entry_html($entry, $brand_name = null) {
+    $brand = $brand_name ?: $entry['brand'];
+
+    ob_start();
+    ?>
+    <div class="fwd-entry">
+        <?php if (!empty($entry['image_url'])): ?>
+        <figure>
+            <img src="<?php echo esc_url($entry['image_url']); ?>"
+                 alt="<?php echo esc_attr($brand . ' ' . $entry['model']); ?>">
+            <?php
+            $caption = fwd_get_image_caption($entry['image_url']);
+            if ($caption): ?>
+            <figcaption class="wp-element-caption"><?php echo esc_html($caption); ?></figcaption>
+            <?php endif; ?>
+        </figure>
+        <?php endif; ?>
+
+        <p>
+            The <strong class="fwd-watch"><?php echo esc_html($brand); ?> <?php echo esc_html($entry['model']); ?></strong>
+            appears in the <?php echo esc_html($entry['year']); ?> film
+            <strong><?php echo esc_html($entry['title']); ?></strong>,
+            worn by <strong><?php echo esc_html($entry['actor']); ?></strong>
+            as <strong><?php echo esc_html($entry['character']); ?></strong>.
+            <?php if (!empty($entry['narrative'])): ?>
+                <?php echo wp_kses_post($entry['narrative']); ?>
+            <?php endif; ?>
+        </p>
+
+        <?php echo fwd_render_metadata($entry); ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+/**
+ * Render metadata footer (confidence and source)
+ *
+ * @param array $entry Entry data
+ * @return string HTML output
+ */
+function fwd_render_metadata($entry) {
+    if (empty($entry['confidence_level']) && empty($entry['source'])) {
+        return '';
+    }
+
+    ob_start();
+    ?>
+    <p class="fwd-metadata" style="font-size: 0.9em; color: #666;">
+        <?php if (!empty($entry['confidence_level'])): ?>
+            <span class="fwd-confidence">Confidence score: <?php echo esc_html($entry['confidence_level']); ?></span>
+        <?php endif; ?>
+        <?php if (!empty($entry['source'])): ?>
+            <?php if (!empty($entry['confidence_level'])) echo ' | '; ?>
+            <a href="<?php echo esc_url($entry['source']); ?>" target="_blank" rel="noopener">Source ↗</a>
+        <?php endif; ?>
+    </p>
+    <?php
+    return ob_get_clean();
+}
+
+/**
  * Shortcode: [film_watch_search]
  * Displays a search form for the database
  */
@@ -167,41 +235,7 @@ function fwd_actor_shortcode($atts) {
         <p>Found <?php echo esc_html($result['count']); ?> result(s)</p>
 
         <?php foreach ($result['films'] as $film): ?>
-        <div class="fwd-entry">
-            <?php if (!empty($film['image_url'])): ?>
-            <figure>
-                <img src="<?php echo esc_url($film['image_url']); ?>"
-                     alt="<?php echo esc_attr($film['brand'] . ' ' . $film['model']); ?>">
-                <?php
-                $caption = fwd_get_image_caption($film['image_url']);
-                if ($caption): ?>
-                <figcaption class="wp-element-caption"><?php echo esc_html($caption); ?></figcaption>
-                <?php endif; ?>
-            </figure>
-            <?php endif; ?>
-
-            <p>
-                The <strong class="fwd-watch"><?php echo esc_html($film['brand']); ?> <?php echo esc_html($film['model']); ?></strong>
-                appears in the <?php echo esc_html($film['year']); ?> film
-                <strong><?php echo esc_html($film['title']); ?></strong>,
-                worn by <strong><?php echo esc_html($film['actor']); ?></strong>
-                as <strong><?php echo esc_html($film['character']); ?></strong>.
-                <?php if (!empty($film['narrative'])): ?>
-                    <?php echo wp_kses_post($film['narrative']); ?>
-                <?php endif; ?>
-            </p>
-            <?php if (!empty($film['confidence_level']) || !empty($film['source'])): ?>
-            <p class="fwd-metadata" style="font-size: 0.9em; color: #666;">
-                <?php if (!empty($film['confidence_level'])): ?>
-                    <span class="fwd-confidence">Confidence score: <?php echo esc_html($film['confidence_level']); ?></span>
-                <?php endif; ?>
-                <?php if (!empty($film['source'])): ?>
-                    <?php if (!empty($film['confidence_level'])) echo ' | '; ?>
-                    <a href="<?php echo esc_url($film['source']); ?>" target="_blank" rel="noopener">Source ↗</a>
-                <?php endif; ?>
-            </p>
-            <?php endif; ?>
-        </div>
+        <?php echo fwd_render_entry_html($film); ?>
         <hr>
         <?php endforeach; ?>
     </div>
@@ -240,41 +274,7 @@ function fwd_brand_shortcode($atts) {
         <p>Found <?php echo esc_html($result['count']); ?> result(s)</p>
 
         <?php foreach ($result['films'] as $film): ?>
-        <div class="fwd-entry">
-            <?php if (!empty($film['image_url'])): ?>
-            <figure>
-                <img src="<?php echo esc_url($film['image_url']); ?>"
-                     alt="<?php echo esc_attr($atts['name'] . ' ' . $film['model']); ?>">
-                <?php
-                $caption = fwd_get_image_caption($film['image_url']);
-                if ($caption): ?>
-                <figcaption class="wp-element-caption"><?php echo esc_html($caption); ?></figcaption>
-                <?php endif; ?>
-            </figure>
-            <?php endif; ?>
-
-            <p>
-                The <strong class="fwd-watch"><?php echo esc_html($atts['name']); ?> <?php echo esc_html($film['model']); ?></strong>
-                appears in the <?php echo esc_html($film['year']); ?> film
-                <strong><?php echo esc_html($film['title']); ?></strong>,
-                worn by <strong><?php echo esc_html($film['actor']); ?></strong>
-                as <strong><?php echo esc_html($film['character']); ?></strong>.
-                <?php if (!empty($film['narrative'])): ?>
-                    <?php echo wp_kses_post($film['narrative']); ?>
-                <?php endif; ?>
-            </p>
-            <?php if (!empty($film['confidence_level']) || !empty($film['source'])): ?>
-            <p class="fwd-metadata" style="font-size: 0.9em; color: #666;">
-                <?php if (!empty($film['confidence_level'])): ?>
-                    <span class="fwd-confidence">Confidence score: <?php echo esc_html($film['confidence_level']); ?></span>
-                <?php endif; ?>
-                <?php if (!empty($film['source'])): ?>
-                    <?php if (!empty($film['confidence_level'])) echo ' | '; ?>
-                    <a href="<?php echo esc_url($film['source']); ?>" target="_blank" rel="noopener">Source ↗</a>
-                <?php endif; ?>
-            </p>
-            <?php endif; ?>
-        </div>
+        <?php echo fwd_render_entry_html($film, $atts['name']); ?>
         <hr>
         <?php endforeach; ?>
     </div>
@@ -313,41 +313,7 @@ function fwd_film_shortcode($atts) {
         <p>Found <?php echo esc_html($result['count']); ?> watch(es)</p>
 
         <?php foreach ($result['watches'] as $watch): ?>
-        <div class="fwd-entry">
-            <?php if (!empty($watch['image_url'])): ?>
-            <figure>
-                <img src="<?php echo esc_url($watch['image_url']); ?>"
-                     alt="<?php echo esc_attr($watch['brand'] . ' ' . $watch['model']); ?>">
-                <?php
-                $caption = fwd_get_image_caption($watch['image_url']);
-                if ($caption): ?>
-                <figcaption class="wp-element-caption"><?php echo esc_html($caption); ?></figcaption>
-                <?php endif; ?>
-            </figure>
-            <?php endif; ?>
-
-            <p>
-                The <strong class="fwd-watch"><?php echo esc_html($watch['brand']); ?> <?php echo esc_html($watch['model']); ?></strong>
-                appears in the <?php echo esc_html($watch['year']); ?> film
-                <strong><?php echo esc_html($watch['title']); ?></strong>,
-                worn by <strong><?php echo esc_html($watch['actor']); ?></strong>
-                as <strong><?php echo esc_html($watch['character']); ?></strong>.
-                <?php if (!empty($watch['narrative'])): ?>
-                    <?php echo wp_kses_post($watch['narrative']); ?>
-                <?php endif; ?>
-            </p>
-            <?php if (!empty($watch['confidence_level']) || !empty($watch['source'])): ?>
-            <p class="fwd-metadata" style="font-size: 0.9em; color: #666;">
-                <?php if (!empty($watch['confidence_level'])): ?>
-                    <span class="fwd-confidence">Confidence score: <?php echo esc_html($watch['confidence_level']); ?></span>
-                <?php endif; ?>
-                <?php if (!empty($watch['source'])): ?>
-                    <?php if (!empty($watch['confidence_level'])) echo ' | '; ?>
-                    <a href="<?php echo esc_url($watch['source']); ?>" target="_blank" rel="noopener">Source ↗</a>
-                <?php endif; ?>
-            </p>
-            <?php endif; ?>
-        </div>
+        <?php echo fwd_render_entry_html($watch); ?>
         <hr>
         <?php endforeach; ?>
     </div>
@@ -417,13 +383,23 @@ function fwd_add_shortcode($atts) {
             </div>
 
             <div class="fwd-form-group">
-                <label for="fwd-source">Source (optional):</label>
+                <label for="fwd-source-url">Source (optional):</label>
                 <input
                     type="text"
-                    id="fwd-source"
+                    id="fwd-source-url"
                     class="fwd-input"
                     placeholder="e.g., IMDB, Watch Spotting Blog, etc."
                 >
+            </div>
+
+            <div class="fwd-form-group">
+                <label for="fwd-confidence">Confidence Level (optional):</label>
+                <select id="fwd-confidence" class="fwd-input">
+                    <option value="">Auto-detect</option>
+                    <option value="High confidence">High confidence</option>
+                    <option value="Medium confidence">Medium confidence</option>
+                    <option value="Low confidence">Low confidence</option>
+                </select>
             </div>
 
             <button id="fwd-add-btn" class="fwd-button">Add to Database</button>
@@ -496,13 +472,23 @@ function fwd_movies_list_shortcode($atts) {
     $table_films = $wpdb->prefix . 'fwd_films';
     $table_film_actor_watch = $wpdb->prefix . 'fwd_film_actor_watch';
 
-    // Get all distinct films that have at least one watch entry
-    $films = $wpdb->get_results("
-        SELECT DISTINCT f.title, f.year
-        FROM {$table_films} f
-        INNER JOIN {$table_film_actor_watch} faw ON f.film_id = faw.film_id
-        ORDER BY f.title ASC
-    ", ARRAY_A);
+    // Try to get cached films list
+    $films = get_transient('fwd_movies_list_cache');
+
+    if (false === $films) {
+        // Get all distinct films that have at least one watch entry
+        // Limit to 2000 films to prevent memory issues
+        $films = $wpdb->get_results("
+            SELECT DISTINCT f.title, f.year
+            FROM {$table_films} f
+            INNER JOIN {$table_film_actor_watch} faw ON f.film_id = faw.film_id
+            ORDER BY f.title ASC
+            LIMIT 2000
+        ", ARRAY_A);
+
+        // Cache for 24 hours
+        set_transient('fwd_movies_list_cache', $films, DAY_IN_SECONDS);
+    }
 
     if (empty($films)) {
         return '<p>No movies found in the database.</p>';

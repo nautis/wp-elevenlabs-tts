@@ -643,6 +643,10 @@ class FWD_Database {
             ));
 
             $wpdb->query('COMMIT');
+
+            // Invalidate caches after successful insert
+            $this->invalidate_caches();
+
             return true;
 
         } catch (Exception $e) {
@@ -660,6 +664,14 @@ class FWD_Database {
      * @return array Result array with success, count, and data
      */
     private function query_unified($search_term, $search_type) {
+        // Try to get cached search results
+        $cache_key = 'fwd_search_' . $search_type . '_' . md5($search_term);
+        $cached_result = get_transient($cache_key);
+
+        if ($cached_result !== false) {
+            return $cached_result;
+        }
+
         global $wpdb;
 
         // Configure search based on type
@@ -748,12 +760,17 @@ class FWD_Database {
             );
         }
 
-        return array(
+        $result = array(
             'success' => true,
             $cfg['result_key'] => $actual_search_value ? $actual_search_value : $search_term,
             'count' => count($items),
             $cfg['list_key'] => $items
         );
+
+        // Cache search results for 1 hour
+        set_transient($cache_key, $result, HOUR_IN_SECONDS);
+
+        return $result;
     }
 
     /**
@@ -792,6 +809,12 @@ class FWD_Database {
      * @return array Statistics array with success flag and stats data
      */
     public function get_stats() {
+        // Try to get cached stats first
+        $cached_stats = get_transient('fwd_database_stats');
+        if ($cached_stats !== false) {
+            return $cached_stats;
+        }
+
         global $wpdb;
 
         // Clear any previous errors
@@ -847,7 +870,7 @@ class FWD_Database {
             }
         }
 
-        return array(
+        $stats = array(
             'success' => true,
             'stats' => array(
                 'films' => (int)$film_count,
@@ -857,6 +880,20 @@ class FWD_Database {
                 'top_brands' => $brands_list
             )
         );
+
+        // Cache stats for 1 hour
+        set_transient('fwd_database_stats', $stats, HOUR_IN_SECONDS);
+
+        return $stats;
+    }
+
+    /**
+     * Invalidate stats and movies list caches
+     * Call this after inserting/updating/deleting data
+     */
+    private function invalidate_caches() {
+        delete_transient('fwd_database_stats');
+        delete_transient('fwd_movies_list_cache');
     }
 }
 

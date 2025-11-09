@@ -26,7 +26,6 @@
         console.log('FWD Admin: Initializing movie autocomplete');
 
         let searchTimeout;
-        let currentResults = [];
 
         // Wrap input for positioning FIRST
         if (!$movieInput.parent().hasClass('fwd-autocomplete-wrapper')) {

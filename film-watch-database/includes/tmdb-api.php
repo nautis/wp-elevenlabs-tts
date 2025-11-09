@@ -37,9 +37,10 @@ class FWD_TMDB_API {
 
     /**
      * Get cache duration in hours from WordPress options
+     * Default: 168 hours (7 days) - movie data rarely changes
      */
     private static function get_cache_hours() {
-        return intval(get_option('fwd_tmdb_cache_hours', 24));
+        return intval(get_option('fwd_tmdb_cache_hours', 168));
     }
 
     /**

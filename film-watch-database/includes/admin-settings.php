@@ -397,6 +397,34 @@ function fwd_find_duplicate_watches() {
         JOIN {$table_brands} b ON w1.brand_id = b.brand_id
     ");
 
+    // Collect all unique watch IDs first (performance optimization)
+    $watch_ids = array();
+    foreach ($potential_dupes as $pair) {
+        $watch_ids[] = $pair->watch1_id;
+        $watch_ids[] = $pair->watch2_id;
+    }
+    $watch_ids = array_unique($watch_ids);
+
+    // Fetch all watch details in a single query with usage counts
+    $watch_details = array();
+    if (!empty($watch_ids)) {
+        $placeholders = implode(',', array_fill(0, count($watch_ids), '%d'));
+        $watches = $wpdb->get_results($wpdb->prepare("
+            SELECT w.watch_id, w.model_reference, b.brand_name,
+                   COUNT(faw.watch_id) as usage_count
+            FROM {$table_watches} w
+            JOIN {$table_brands} b ON w.brand_id = b.brand_id
+            LEFT JOIN {$table_film_actor_watch} faw ON w.watch_id = faw.watch_id
+            WHERE w.watch_id IN ($placeholders)
+            GROUP BY w.watch_id, w.model_reference, b.brand_name
+        ", ...$watch_ids));
+
+        // Index by watch_id for fast lookup
+        foreach ($watches as $watch) {
+            $watch_details[$watch->watch_id] = $watch;
+        }
+    }
+
     foreach ($potential_dupes as $pair) {
         $model1 = strtolower($pair->watch1_model);
         $model2 = strtolower($pair->watch2_model);
@@ -404,28 +432,17 @@ function fwd_find_duplicate_watches() {
         // Check if one model name contains the other (e.g., "Chronograph" and "Chronograph 1")
         if (strpos($model1, $model2) !== false || strpos($model2, $model1) !== false) {
 
-            // Get watch details with usage counts
-            $watch1 = $wpdb->get_row($wpdb->prepare("
-                SELECT w.watch_id, w.model_reference, b.brand_name,
-                       (SELECT COUNT(*) FROM {$table_film_actor_watch} WHERE watch_id = w.watch_id) as usage_count
-                FROM {$table_watches} w
-                JOIN {$table_brands} b ON w.brand_id = b.brand_id
-                WHERE w.watch_id = %d
-            ", $pair->watch1_id));
+            // Get watch details from cached array
+            $watch1 = isset($watch_details[$pair->watch1_id]) ? $watch_details[$pair->watch1_id] : null;
+            $watch2 = isset($watch_details[$pair->watch2_id]) ? $watch_details[$pair->watch2_id] : null;
 
-            $watch2 = $wpdb->get_row($wpdb->prepare("
-                SELECT w.watch_id, w.model_reference, b.brand_name,
-                       (SELECT COUNT(*) FROM {$table_film_actor_watch} WHERE watch_id = w.watch_id) as usage_count
-                FROM {$table_watches} w
-                JOIN {$table_brands} b ON w.brand_id = b.brand_id
-                WHERE w.watch_id = %d
-            ", $pair->watch2_id));
+            if ($watch1 && $watch2) {
+                // Create unique key to avoid duplicate pairs
+                $key = min($pair->watch1_id, $pair->watch2_id) . '_' . max($pair->watch1_id, $pair->watch2_id);
 
-            // Create unique key to avoid duplicate pairs
-            $key = min($pair->watch1_id, $pair->watch2_id) . '_' . max($pair->watch1_id, $pair->watch2_id);
-
-            if (!isset($duplicates[$key])) {
-                $duplicates[$key] = array($watch1, $watch2);
+                if (!isset($duplicates[$key])) {
+                    $duplicates[$key] = array($watch1, $watch2);
+                }
             }
         }
     }
@@ -489,6 +506,54 @@ function fwd_find_duplicate_characters() {
         JOIN {$table_characters} c2 ON faw2.character_id = c2.character_id
     ");
 
+    // Collect all unique character IDs first (performance optimization)
+    $character_ids = array();
+    foreach ($potential_dupes as $pair) {
+        $character_ids[] = $pair->char1_id;
+        $character_ids[] = $pair->char2_id;
+    }
+    $character_ids = array_unique($character_ids);
+
+    // Fetch all character details in a single query
+    $character_details = array();
+    if (!empty($character_ids)) {
+        $placeholders = implode(',', array_fill(0, count($character_ids), '%d'));
+        $characters = $wpdb->get_results($wpdb->prepare("
+            SELECT c.character_id, c.character_name,
+                   COUNT(faw.character_id) as usage_count
+            FROM {$table_characters} c
+            LEFT JOIN {$table_film_actor_watch} faw ON c.character_id = faw.character_id
+            WHERE c.character_id IN ($placeholders)
+            GROUP BY c.character_id, c.character_name
+        ", ...$character_ids));
+
+        foreach ($characters as $char) {
+            $character_details[$char->character_id] = $char;
+        }
+    }
+
+    // Fetch all film appearances in a single query
+    $film_appearances = array();
+    if (!empty($character_ids)) {
+        $placeholders = implode(',', array_fill(0, count($character_ids), '%d'));
+        $all_films = $wpdb->get_results($wpdb->prepare("
+            SELECT faw.character_id, f.title, f.year, a.actor_name
+            FROM {$table_film_actor_watch} faw
+            JOIN {$wpdb->prefix}fwd_films f ON faw.film_id = f.film_id
+            JOIN {$wpdb->prefix}fwd_actors a ON faw.actor_id = a.actor_id
+            WHERE faw.character_id IN ($placeholders)
+            ORDER BY f.year, f.title
+        ", ...$character_ids));
+
+        // Group by character_id
+        foreach ($all_films as $film) {
+            if (!isset($film_appearances[$film->character_id])) {
+                $film_appearances[$film->character_id] = array();
+            }
+            $film_appearances[$film->character_id][] = $film;
+        }
+    }
+
     foreach ($potential_dupes as $pair) {
         $name1 = strtolower(stripslashes($pair->char1_name));
         $name2 = strtolower(stripslashes($pair->char2_name));
@@ -502,50 +567,24 @@ function fwd_find_duplicate_characters() {
             strpos($name1_clean, $name2_clean) !== false ||
             strpos($name2_clean, $name1_clean) !== false) {
 
-            // Get film appearances for both characters
-            $char1_films = $wpdb->get_results($wpdb->prepare("
-                SELECT f.title, f.year, a.actor_name
-                FROM {$table_film_actor_watch} faw
-                JOIN {$wpdb->prefix}fwd_films f ON faw.film_id = f.film_id
-                JOIN {$wpdb->prefix}fwd_actors a ON faw.actor_id = a.actor_id
-                WHERE faw.character_id = %d
-                ORDER BY f.year, f.title
-            ", $pair->char1_id));
+            // Get character details and films from cached arrays
+            $char1 = isset($character_details[$pair->char1_id]) ? $character_details[$pair->char1_id] : null;
+            $char2 = isset($character_details[$pair->char2_id]) ? $character_details[$pair->char2_id] : null;
+            $char1_films = isset($film_appearances[$pair->char1_id]) ? $film_appearances[$pair->char1_id] : array();
+            $char2_films = isset($film_appearances[$pair->char2_id]) ? $film_appearances[$pair->char2_id] : array();
 
-            $char2_films = $wpdb->get_results($wpdb->prepare("
-                SELECT f.title, f.year, a.actor_name
-                FROM {$table_film_actor_watch} faw
-                JOIN {$wpdb->prefix}fwd_films f ON faw.film_id = f.film_id
-                JOIN {$wpdb->prefix}fwd_actors a ON faw.actor_id = a.actor_id
-                WHERE faw.character_id = %d
-                ORDER BY f.year, f.title
-            ", $pair->char2_id));
+            if ($char1 && $char2) {
+                // Create unique key to avoid duplicate pairs
+                $key = min($pair->char1_id, $pair->char2_id) . '_' . max($pair->char1_id, $pair->char2_id);
 
-            // Get character objects with usage counts
-            $char1 = $wpdb->get_row($wpdb->prepare("
-                SELECT c.character_id, c.character_name,
-                       (SELECT COUNT(*) FROM {$table_film_actor_watch} WHERE character_id = c.character_id) as usage_count
-                FROM {$table_characters} c
-                WHERE c.character_id = %d
-            ", $pair->char1_id));
-
-            $char2 = $wpdb->get_row($wpdb->prepare("
-                SELECT c.character_id, c.character_name,
-                       (SELECT COUNT(*) FROM {$table_film_actor_watch} WHERE character_id = c.character_id) as usage_count
-                FROM {$table_characters} c
-                WHERE c.character_id = %d
-            ", $pair->char2_id));
-
-            // Create unique key to avoid duplicate pairs
-            $key = min($pair->char1_id, $pair->char2_id) . '_' . max($pair->char1_id, $pair->char2_id);
-
-            if (!isset($duplicates[$key])) {
-                $duplicates[$key] = array(
-                    'char1' => $char1,
-                    'char1_films' => $char1_films,
-                    'char2' => $char2,
-                    'char2_films' => $char2_films
-                );
+                if (!isset($duplicates[$key])) {
+                    $duplicates[$key] = array(
+                        'char1' => $char1,
+                        'char1_films' => $char1_films,
+                        'char2' => $char2,
+                        'char2_films' => $char2_films
+                    );
+                }
             }
         }
     }

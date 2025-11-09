@@ -10,6 +10,24 @@ if (!defined('ABSPATH')) {
 }
 
 /**
+ * Validate AJAX request with nonce and capability check
+ * Consolidates duplicate security validation across all AJAX handlers
+ *
+ * @param bool $require_admin Whether to require admin capabilities
+ * @return bool True if valid, exits with JSON error if not
+ */
+function fwd_validate_ajax_request($require_admin = false) {
+    check_ajax_referer('fwd_ajax_nonce', 'nonce');
+
+    if ($require_admin && !current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Unauthorized'));
+        exit;
+    }
+
+    return true;
+}
+
+/**
  * Get database statistics
  */
 function fwd_get_stats() {
@@ -176,7 +194,7 @@ function fwd_add_entry($entry_text, $narrative = '', $image_url = '', $confidenc
  * AJAX handler for search requests
  */
 function fwd_ajax_search() {
-    check_ajax_referer('fwd_ajax_nonce', 'nonce');
+    fwd_validate_ajax_request(false);
 
     if (!isset($_POST['query_type']) || !isset($_POST['search_term'])) {
         wp_send_json_error(array('message' => 'Missing required parameters'));
@@ -217,11 +235,7 @@ add_action('wp_ajax_nopriv_fwd_search', 'fwd_ajax_search');
  * AJAX handler for adding entries (admin only)
  */
 function fwd_ajax_add_entry() {
-    check_ajax_referer('fwd_ajax_nonce', 'nonce');
-
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error(array('message' => 'Unauthorized'));
-    }
+    fwd_validate_ajax_request(true);
 
     // Use wp_unslash to remove any magic quotes or unwanted slashes
     $entry_text = sanitize_text_field(wp_unslash($_POST['entry_text']));
@@ -274,11 +288,7 @@ function fwd_parse_pipe_entry($pipe_entry) {
  * AJAX handler for quick entry (pipe-delimited)
  */
 function fwd_ajax_add_quick_entry() {
-    check_ajax_referer('fwd_ajax_nonce', 'nonce');
-
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error(array('message' => 'Unauthorized'));
-    }
+    fwd_validate_ajax_request(true);
 
     // Use wp_unslash to remove any magic quotes or unwanted slashes
     $quick_entry = sanitize_textarea_field(wp_unslash($_POST['quick_entry']));
@@ -322,11 +332,7 @@ add_action('wp_ajax_fwd_add_quick_entry', 'fwd_ajax_add_quick_entry');
  * AJAX handler for CSV bulk import
  */
 function fwd_ajax_import_csv() {
-    check_ajax_referer('fwd_ajax_nonce', 'nonce');
-
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error(array('message' => 'Unauthorized'));
-    }
+    fwd_validate_ajax_request(true);
 
     // Use wp_unslash to remove any magic quotes or unwanted slashes
     $csv_content = sanitize_textarea_field(wp_unslash($_POST['csv_content']));
