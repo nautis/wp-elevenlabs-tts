@@ -31,19 +31,26 @@ while (have_posts()) : the_post();
         <div class="movie-header-wrapper">
             <?php
             // Try featured image first, then TMDB poster
-            $poster_url = null;
-
-            if (has_post_thumbnail()) {
-                $poster_url = get_the_post_thumbnail_url($post_id, 'fww-poster');
-            } elseif (!empty($tmdb_data) && !empty($tmdb_data['poster_path'])) {
-                // Use TMDB poster URL (w500 size for good quality)
+            if (has_post_thumbnail()) : ?>
+                <div class="movie-poster">
+                    <?php the_post_thumbnail('fww-poster', array(
+                        'class' => 'fww-movie-poster',
+                        'alt' => get_the_title() . ' poster'
+                    )); ?>
+                </div>
+            <?php elseif (!empty($tmdb_data) && !empty($tmdb_data['poster_path'])) :
                 $poster_url = 'https://image.tmdb.org/t/p/w500' . $tmdb_data['poster_path'];
-            } elseif (!empty($tmdb_data) && !empty($tmdb_data['poster_url'])) {
-                // Fallback to pre-built poster_url
+                ?>
+                <div class="movie-poster">
+                    <img src="<?php echo esc_url($poster_url); ?>"
+                         alt="<?php echo esc_attr(get_the_title()); ?> poster"
+                         class="fww-movie-poster"
+                         width="250"
+                         height="375" />
+                </div>
+            <?php elseif (!empty($tmdb_data) && !empty($tmdb_data['poster_url'])) :
                 $poster_url = $tmdb_data['poster_url'];
-            }
-
-            if ($poster_url) : ?>
+                ?>
                 <div class="movie-poster">
                     <img src="<?php echo esc_url($poster_url); ?>"
                          alt="<?php echo esc_attr(get_the_title()); ?> poster"
