@@ -1,11 +1,12 @@
 <?php
 /**
- * Single Movie Template (Simple IWMDB-style)
- * Displays a movie page with watch sightings
+ * Single Movie Template
+ * Displays a movie page with TMDB data and watch sightings
  */
 
 get_header(); ?>
 
+<!-- FWW CUSTOM TEMPLATE LOADED -->
 <main id="main" class="site-main fww-custom-template">
 <div id="primary" class="content-area fww-content-area">
 
@@ -14,143 +15,194 @@ while (have_posts()) : the_post();
     $post_id = get_the_ID();
     $movie_data = fww_get_movie_data($post_id);
     $tmdb_data = $movie_data['tmdb_data'];
+    $film_id = $movie_data['film_id'];
 
-    // Get watch sightings
+    // Get watch sightings from new sightings table
     $watch_sightings = FWW_Sightings::get_sightings_by_movie($post_id);
 
-    // Count totals
-    $total_sightings = count($watch_sightings);
-
-    // Get unique watches and actors
-    $unique_watches = array();
-    $unique_actors = array();
-    foreach ($watch_sightings as $sighting) {
-        $unique_watches[$sighting->watch_id] = true;
-        $unique_actors[$sighting->actor_id] = true;
-    }
-    $total_watches = count($unique_watches);
-    $total_actors = count($unique_actors);
-
-    // Group sightings by watch
-    $watches_data = array();
-    foreach ($watch_sightings as $sighting) {
-        if (!isset($watches_data[$sighting->watch_id])) {
-            $watches_data[$sighting->watch_id] = array(
-                'watch_name' => $sighting->watch_name,
-                'watch_id' => $sighting->watch_id,
-                'brand_name' => $sighting->brand_name,
-                'brand_id' => $sighting->brand_id,
-                'actors' => array()
-            );
-        }
-        $watches_data[$sighting->watch_id]['actors'][] = $sighting;
+    // Fallback: Get watch sightings from legacy database if no new sightings
+    if (empty($watch_sightings) && !empty($film_id)) {
+        $legacy_sightings = fww_get_movie_watch_sightings($film_id);
     }
     ?>
 
-    <article id="post-<?php the_ID(); ?>" <?php post_class('fww-simple-layout'); ?>>
+    <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
 
-        <div class="fww-simple-header">
-            <h1 class="entry-title">
-                <?php the_title(); ?>
-                <?php if (!empty($movie_data['year'])) : ?>
-                    <span class="movie-year">(<?php echo esc_html($movie_data['year']); ?>)</span>
-                <?php endif; ?>
-            </h1>
-
-            <?php if (!empty($tmdb_data['tagline'])) : ?>
-                <p class="movie-tagline"><?php echo esc_html($tmdb_data['tagline']); ?></p>
-            <?php endif; ?>
-
-            <?php if (!empty($watch_sightings)) : ?>
-                <div class="fww-stats">
-                    <p><strong>Watch Sightings:</strong> <?php echo $total_sightings; ?></p>
-                    <p><strong>Unique Watches:</strong> <?php echo $total_watches; ?></p>
-                    <p><strong>Actors:</strong> <?php echo $total_actors; ?></p>
+        <div class="movie-header-wrapper">
+            <?php
+            // Try featured image first, then TMDB poster
+            if (has_post_thumbnail()) : ?>
+                <div class="movie-poster">
+                    <?php the_post_thumbnail('fww-poster', array(
+                        'class' => 'fww-movie-poster',
+                        'alt' => get_the_title() . ' poster'
+                    )); ?>
+                </div>
+            <?php elseif (!empty($tmdb_data) && !empty($tmdb_data['poster_path'])) :
+                $poster_url = 'https://image.tmdb.org/t/p/w500' . $tmdb_data['poster_path'];
+                ?>
+                <div class="movie-poster">
+                    <img src="<?php echo esc_url($poster_url); ?>"
+                         alt="<?php echo esc_attr(get_the_title()); ?> poster"
+                         class="fww-movie-poster"
+                         width="250"
+                         height="375" />
+                </div>
+            <?php elseif (!empty($tmdb_data) && !empty($tmdb_data['poster_url'])) :
+                $poster_url = $tmdb_data['poster_url'];
+                ?>
+                <div class="movie-poster">
+                    <img src="<?php echo esc_url($poster_url); ?>"
+                         alt="<?php echo esc_attr(get_the_title()); ?> poster"
+                         class="fww-movie-poster"
+                         width="250"
+                         height="375" />
                 </div>
             <?php endif; ?>
 
-            <?php if (!empty($tmdb_data)) : ?>
-                <div class="movie-meta-simple">
-                    <?php if (!empty($tmdb_data['release_date'])) : ?>
-                        <p><strong>Released:</strong> <?php echo date('F j, Y', strtotime($tmdb_data['release_date'])); ?></p>
+            <div class="movie-header-content">
+                <h1 class="entry-title">
+                    <?php the_title(); ?>
+                    <?php if (!empty($movie_data['year'])) : ?>
+                        <span class="movie-year">(<?php echo esc_html($movie_data['year']); ?>)</span>
+                    <?php endif; ?>
+                </h1>
+
+                <?php if (!empty($tmdb_data['tagline'])) : ?>
+                    <p class="movie-tagline"><?php echo esc_html($tmdb_data['tagline']); ?></p>
+                <?php endif; ?>
+
+                <div class="movie-meta">
+                    <?php if (!empty($tmdb_data['certification'])) : ?>
+                        <span class="movie-certification"><?php echo esc_html($tmdb_data['certification']); ?></span>
                     <?php endif; ?>
 
-                    <?php if (!empty($tmdb_data['runtime'])) : ?>
-                        <p><strong>Runtime:</strong> <?php echo fww_format_runtime($tmdb_data['runtime']); ?></p>
+                    <?php if (!empty($tmdb_data['release_date'])) : ?>
+                        <span class="movie-release"><?php echo date('m/d/Y', strtotime($tmdb_data['release_date'])); ?> (US)</span>
                     <?php endif; ?>
 
                     <?php if (!empty($tmdb_data['genres'])) : ?>
-                        <p><strong>Genres:</strong> <?php
+                        <span class="movie-genres">
+                            <?php
                             $genre_names = array_map(function($g) { return $g['name']; }, $tmdb_data['genres']);
                             echo esc_html(implode(', ', $genre_names));
-                        ?></p>
+                            ?>
+                        </span>
+                    <?php endif; ?>
+
+                    <?php if (!empty($tmdb_data['runtime'])) : ?>
+                        <span class="movie-runtime"><?php echo fww_format_runtime($tmdb_data['runtime']); ?></span>
                     <?php endif; ?>
                 </div>
-            <?php endif; ?>
+
+                <?php if (!empty($tmdb_data['overview'])) : ?>
+                    <div class="movie-overview">
+                        <h2>Overview</h2>
+                        <p><?php echo esc_html($tmdb_data['overview']); ?></p>
+                    </div>
+                <?php endif; ?>
+            </div>
         </div>
 
         <div class="entry-content">
-            <?php if (!empty($tmdb_data['overview'])) : ?>
-                <div class="fww-description">
-                    <h2>Overview</h2>
-                    <p><?php echo esc_html($tmdb_data['overview']); ?></p>
+
+            <!-- Watch Sightings Section -->
+            <?php if (!empty($watch_sightings)) : ?>
+                <div class="movie-watches">
+                    <h2>Watches Worn in This Film</h2>
+                    <div class="watch-list">
+                        <?php foreach ($watch_sightings as $sighting) : ?>
+                            <div class="watch-item">
+                                <?php if (!empty($sighting->screenshot_url)) : ?>
+                                    <div class="watch-image">
+                                        <img src="<?php echo esc_url($sighting->screenshot_url); ?>"
+                                             alt="<?php echo esc_attr($sighting->actor_name . ' wearing ' . $sighting->watch_name); ?>"
+                                             class="fww-sighting-screenshot" />
+                                    </div>
+                                <?php endif; ?>
+
+                                <div class="watch-details">
+                                    <h3 class="watch-model">
+                                        <?php
+                                        // Check if watch name already starts with brand name to avoid duplication
+                                        if (stripos($sighting->watch_name, $sighting->brand_name) === 0) {
+                                            // Watch name includes brand, just show watch name with link
+                                            ?>
+                                            <a href="<?php echo get_permalink($sighting->watch_id); ?>">
+                                                <?php echo esc_html($sighting->watch_name); ?>
+                                            </a>
+                                            <?php
+                                        } else {
+                                            // Watch name doesn't include brand, show both with separate links
+                                            ?>
+                                            <a href="<?php echo get_permalink($sighting->brand_id); ?>">
+                                                <?php echo esc_html($sighting->brand_name); ?>
+                                            </a>
+                                            <a href="<?php echo get_permalink($sighting->watch_id); ?>">
+                                                <?php echo esc_html($sighting->watch_name); ?>
+                                            </a>
+                                            <?php
+                                        }
+                                        ?>
+                                    </h3>
+
+                                    <p class="watch-worn-by">
+                                        Worn by <a href="<?php echo get_permalink($sighting->actor_id); ?>"><strong><?php echo esc_html($sighting->actor_name); ?></strong></a>
+                                        <?php if (!empty($sighting->character_name)) : ?>
+                                            as <em><?php echo esc_html($sighting->character_name); ?></em>
+                                        <?php endif; ?>
+                                    </p>
+
+                                    <?php if (!empty($sighting->scene_description)) : ?>
+                                        <div class="watch-scene">
+                                            <p><?php echo esc_html($sighting->scene_description); ?></p>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($sighting->verification_level)) : ?>
+                                        <span class="watch-verification watch-verification-<?php echo esc_attr(strtolower($sighting->verification_level)); ?>">
+                                            <?php echo esc_html(ucfirst($sighting->verification_level)); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php elseif (!empty($legacy_sightings)) : ?>
+                <div class="movie-watches">
+                    <h2>Watches Worn in This Film (Legacy Data)</h2>
+                    <div class="watch-list">
+                        <?php foreach ($legacy_sightings as $sighting) : ?>
+                            <div class="watch-item">
+                                <div class="watch-details">
+                                    <h3 class="watch-model">
+                                        <?php echo esc_html($sighting->brand_name); ?>
+                                        <?php if (!empty($sighting->model_reference)) : ?>
+                                            <?php echo esc_html($sighting->model_reference); ?>
+                                        <?php endif; ?>
+                                    </h3>
+
+                                    <p class="watch-worn-by">
+                                        Worn by <strong><?php echo esc_html($sighting->actor_name); ?></strong>
+                                        <?php if (!empty($sighting->character_name)) : ?>
+                                            as <em><?php echo esc_html($sighting->character_name); ?></em>
+                                        <?php endif; ?>
+                                    </p>
+
+                                    <?php if (!empty($sighting->verification_level)) : ?>
+                                        <span class="watch-verification watch-verification-<?php echo esc_attr(strtolower($sighting->verification_level)); ?>">
+                                            <?php echo esc_html($sighting->verification_level); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
             <?php endif; ?>
 
-            <?php
-            $content = get_the_content();
-            if (!empty(trim($content))) : ?>
-                <div class="fww-description">
-                    <?php the_content(); ?>
-                </div>
-            <?php endif; ?>
-
-            <?php if (!empty($watches_data)) : ?>
-                <h2>Watches in This Film</h2>
-                <ul class="fww-simple-list">
-                    <?php foreach ($watches_data as $watch) : ?>
-                        <li>
-                            <?php
-                            // Check if watch name already starts with brand name to avoid duplication
-                            if (stripos($watch['watch_name'], $watch['brand_name']) === 0) {
-                                // Watch name includes brand, just show watch name
-                                ?>
-                                <strong><a href="<?php echo get_permalink($watch['watch_id']); ?>">
-                                    <?php echo esc_html($watch['watch_name']); ?>
-                                </a></strong>
-                                <?php
-                            } else {
-                                // Watch name doesn't include brand, show both
-                                ?>
-                                <strong><a href="<?php echo get_permalink($watch['brand_id']); ?>">
-                                    <?php echo esc_html($watch['brand_name']); ?>
-                                </a>
-                                <a href="<?php echo get_permalink($watch['watch_id']); ?>">
-                                    <?php echo esc_html($watch['watch_name']); ?>
-                                </a></strong>
-                                <?php
-                            }
-
-                            // Show actors who wore this watch
-                            $actor_list = array();
-                            foreach ($watch['actors'] as $sighting) {
-                                $actor_info = '<a href="' . get_permalink($sighting->actor_id) . '">' . esc_html($sighting->actor_name) . '</a>';
-                                if (!empty($sighting->character_name)) {
-                                    $actor_info .= ' (as ' . esc_html($sighting->character_name) . ')';
-                                }
-                                $actor_list[] = $actor_info;
-                            }
-                            if (!empty($actor_list)) {
-                                echo ' - Worn by ' . implode(', ', $actor_list);
-                            }
-                            ?>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-            <?php else : ?>
-                <p><em>No watch sightings documented yet for this film.</em></p>
-            <?php endif; ?>
-        </div>
+        </div><!-- .entry-content -->
 
     </article>
 
