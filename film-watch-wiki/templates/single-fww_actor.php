@@ -83,11 +83,14 @@ while (have_posts()) : the_post();
                     </div>
                 <?php endif; ?>
 
-                <?php if (!empty($tmdb_data['biography'])) : ?>
+                <?php if (!empty($tmdb_data['biography'])) :
+                    // Convert non-breaking spaces to regular spaces for cleaner display
+                    $clean_bio = str_replace("\xc2\xa0", ' ', $tmdb_data['biography']);
+                    ?>
                     <div class="actor-biography">
                         <h2>Biography</h2>
                         <div id="actor-bio-<?php echo $post_id; ?>" class="bio-container" data-word-limit="200">
-                            <?php echo nl2br(esc_html($tmdb_data['biography'])); ?>
+                            <?php echo nl2br(esc_html($clean_bio)); ?>
                         </div>
                         <button class="bio-toggle-btn hidden" data-target="actor-bio-<?php echo $post_id; ?>" aria-expanded="false">
                             Read More
