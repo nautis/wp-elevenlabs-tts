@@ -98,7 +98,7 @@ while (have_posts()) : the_post();
                         <?php foreach ($watch_sightings as $sighting) : ?>
                             <div class="watch-item">
                                 <?php if (!empty($sighting->screenshot_url)) : ?>
-                                    <div class="watch-screenshot">
+                                    <div class="watch-image">
                                         <img src="<?php echo esc_url($sighting->screenshot_url); ?>"
                                              alt="<?php echo esc_attr($sighting->actor_name . ' wearing ' . $sighting->watch_name); ?>"
                                              class="fww-sighting-screenshot" />
