@@ -78,6 +78,9 @@ class Film_Watch_Wiki {
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
 
+        // Check for schema upgrades on plugins loaded
+        add_action('plugins_loaded', array($this, 'maybe_upgrade_schema'));
+
         // Enqueue scripts and styles
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
@@ -104,8 +107,11 @@ class Film_Watch_Wiki {
         // Register post types for flush_rewrite_rules() to work
         FWW_Post_Types::register_post_types();
 
-        // Create database tables
+        // Create database tables (will create if not exists)
         FWW_Sightings::create_table();
+
+        // Upgrade existing tables with new indexes and columns
+        FWW_Sightings::upgrade_table();
 
         // Flush rewrite rules
         flush_rewrite_rules();
@@ -117,6 +123,18 @@ class Film_Watch_Wiki {
     public function deactivate() {
         // Flush rewrite rules
         flush_rewrite_rules();
+    }
+
+    /**
+     * Maybe upgrade database schema
+     * Runs on every plugins_loaded to catch file uploads without reactivation
+     */
+    public function maybe_upgrade_schema() {
+        $current_version = get_option('fww_sightings_db_version', '1.0');
+
+        if (version_compare($current_version, FWW_Sightings::TABLE_VERSION, '<')) {
+            FWW_Sightings::upgrade_table();
+        }
     }
 
     /**
