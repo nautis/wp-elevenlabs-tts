@@ -90,9 +90,27 @@ while (have_posts()) : the_post();
                     $show_read_more = $word_count > 200;
 
                     if ($show_read_more) {
-                        // Split on any whitespace to properly handle newlines
-                        $words = preg_split('/\s+/', $biography);
-                        $short_bio = implode(' ', array_slice($words, 0, 200));
+                        // Get first 200 words while preserving paragraph breaks
+                        $current_word_count = 0;
+                        $paragraphs = preg_split('/\n\n+/', $biography);
+                        $short_paragraphs = array();
+
+                        foreach ($paragraphs as $paragraph) {
+                            $paragraph_words = str_word_count($paragraph);
+                            if ($current_word_count + $paragraph_words <= 200) {
+                                $short_paragraphs[] = $paragraph;
+                                $current_word_count += $paragraph_words;
+                            } else {
+                                // This paragraph would exceed 200 words, so truncate it
+                                $remaining_words = 200 - $current_word_count;
+                                if ($remaining_words > 0) {
+                                    $words = preg_split('/\s+/', $paragraph, -1, PREG_SPLIT_NO_EMPTY);
+                                    $short_paragraphs[] = implode(' ', array_slice($words, 0, $remaining_words));
+                                }
+                                break;
+                            }
+                        }
+                        $short_bio = implode("\n\n", $short_paragraphs);
                     } else {
                         $short_bio = $biography;
                     }
