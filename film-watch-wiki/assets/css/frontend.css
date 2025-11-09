@@ -472,3 +472,27 @@ body.single-fww_brand .post-inner {
 .fww-simple-layout .fww-simple-list a:hover {
     text-decoration: underline;
 }
+
+/* Movie-specific simple styles */
+.fww-simple-layout .movie-year {
+    font-weight: 400;
+    opacity: 0.8;
+    margin-left: 0.5rem;
+}
+
+.fww-simple-layout .movie-tagline {
+    font-style: italic;
+    opacity: 0.7;
+    font-size: 1.1em;
+    margin: 0.5rem 0 1rem 0;
+}
+
+.fww-simple-layout .movie-meta-simple {
+    margin: 1rem 0;
+    padding: 1rem 0;
+    border-top: 1px solid #e0e0e0;
+}
+
+.fww-simple-layout .movie-meta-simple p {
+    margin: 0.5rem 0;
+}
