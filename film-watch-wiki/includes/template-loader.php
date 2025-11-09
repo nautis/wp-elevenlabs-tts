@@ -32,7 +32,7 @@ class FWW_Template_Loader {
         }
 
         // Check if it's one of our post types
-        $post_types = array('fww_movie', 'fww_actor', 'fww_watch');
+        $post_types = array('fww_movie', 'fww_actor', 'fww_watch', 'fww_brand');
 
         if (in_array($post->post_type, $post_types)) {
             // Try to load template from theme first
@@ -59,7 +59,7 @@ class FWW_Template_Loader {
      * Load custom archive template for our post types
      */
     public static function load_archive_template($template) {
-        if (is_post_type_archive(array('fww_movie', 'fww_actor', 'fww_watch'))) {
+        if (is_post_type_archive(array('fww_movie', 'fww_actor', 'fww_watch', 'fww_brand'))) {
             $post_type = get_query_var('post_type');
 
             // Try to load template from theme first
@@ -94,7 +94,7 @@ class FWW_Template_Loader {
             error_log('FWW post type: ' . get_post_type());
         }
 
-        if (is_singular(array('fww_movie', 'fww_actor', 'fww_watch'))) {
+        if (is_singular(array('fww_movie', 'fww_actor', 'fww_watch', 'fww_brand'))) {
             $post_type = get_post_type();
 
             $plugin_template = FWW_PLUGIN_DIR . 'templates/single-' . $post_type . '.php';

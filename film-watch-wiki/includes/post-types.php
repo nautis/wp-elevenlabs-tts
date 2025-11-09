@@ -24,6 +24,7 @@ class FWW_Post_Types {
         self::register_movie_post_type();
         self::register_actor_post_type();
         self::register_watch_post_type();
+        self::register_brand_post_type();
     }
 
     /**
@@ -159,6 +160,48 @@ class FWW_Post_Types {
         );
 
         register_post_type('fww_watch', $args);
+    }
+
+    /**
+     * Register Brand Post Type
+     */
+    private static function register_brand_post_type() {
+        $labels = array(
+            'name'                  => _x('Brands', 'Post type general name', 'film-watch-wiki'),
+            'singular_name'         => _x('Brand', 'Post type singular name', 'film-watch-wiki'),
+            'menu_name'             => _x('Brands', 'Admin Menu text', 'film-watch-wiki'),
+            'name_admin_bar'        => _x('Brand', 'Add New on Toolbar', 'film-watch-wiki'),
+            'add_new'               => __('Add New', 'film-watch-wiki'),
+            'add_new_item'          => __('Add New Brand', 'film-watch-wiki'),
+            'new_item'              => __('New Brand', 'film-watch-wiki'),
+            'edit_item'             => __('Edit Brand', 'film-watch-wiki'),
+            'view_item'             => __('View Brand', 'film-watch-wiki'),
+            'all_items'             => __('All Brands', 'film-watch-wiki'),
+            'search_items'          => __('Search Brands', 'film-watch-wiki'),
+            'not_found'             => __('No brands found.', 'film-watch-wiki'),
+            'not_found_in_trash'    => __('No brands found in Trash.', 'film-watch-wiki'),
+            'featured_image'        => _x('Brand Logo', 'Overrides the "Featured Image" phrase', 'film-watch-wiki'),
+            'set_featured_image'    => _x('Set logo', 'Overrides the "Set featured image" phrase', 'film-watch-wiki'),
+        );
+
+        $args = array(
+            'labels'             => $labels,
+            'public'             => true,
+            'publicly_queryable' => true,
+            'show_ui'            => true,
+            'show_in_menu'       => true,
+            'query_var'          => true,
+            'rewrite'            => array('slug' => 'brand'),
+            'capability_type'    => 'post',
+            'has_archive'        => true,
+            'hierarchical'       => false,
+            'menu_position'      => 8,
+            'menu_icon'          => 'dashicons-awards',
+            'supports'           => array('title', 'editor', 'thumbnail'),
+            'show_in_rest'       => true,
+        );
+
+        register_post_type('fww_brand', $args);
     }
 }
 

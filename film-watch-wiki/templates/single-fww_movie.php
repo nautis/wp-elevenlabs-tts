@@ -17,8 +17,13 @@ while (have_posts()) : the_post();
     $tmdb_data = $movie_data['tmdb_data'];
     $film_id = $movie_data['film_id'];
 
-    // Get watch sightings from existing database
-    $watch_sightings = fww_get_movie_watch_sightings($film_id);
+    // Get watch sightings from new sightings table
+    $watch_sightings = FWW_Sightings::get_sightings_by_movie($post_id);
+
+    // Fallback: Get watch sightings from legacy database if no new sightings
+    if (empty($watch_sightings) && !empty($film_id)) {
+        $legacy_sightings = fww_get_movie_watch_sightings($film_id);
+    }
     ?>
 
     <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
@@ -92,13 +97,45 @@ while (have_posts()) : the_post();
                     <div class="watch-list">
                         <?php foreach ($watch_sightings as $sighting) : ?>
                             <div class="watch-item">
-                                <?php if (!empty($sighting->image_url)) : ?>
-                                    <div class="watch-image">
-                                        <img src="<?php echo esc_url($sighting->image_url); ?>"
-                                             alt="<?php echo esc_attr($sighting->brand_name . ' ' . $sighting->model_reference); ?>">
-                                    </div>
-                                <?php endif; ?>
+                                <div class="watch-details">
+                                    <h3 class="watch-model">
+                                        <a href="<?php echo get_permalink($sighting->brand_id); ?>">
+                                            <?php echo esc_html($sighting->brand_name); ?>
+                                        </a>
+                                        <a href="<?php echo get_permalink($sighting->watch_id); ?>">
+                                            <?php echo esc_html($sighting->watch_name); ?>
+                                        </a>
+                                    </h3>
 
+                                    <p class="watch-worn-by">
+                                        Worn by <a href="<?php echo get_permalink($sighting->actor_id); ?>"><strong><?php echo esc_html($sighting->actor_name); ?></strong></a>
+                                        <?php if (!empty($sighting->character_name)) : ?>
+                                            as <em><?php echo esc_html($sighting->character_name); ?></em>
+                                        <?php endif; ?>
+                                    </p>
+
+                                    <?php if (!empty($sighting->scene_description)) : ?>
+                                        <div class="watch-scene">
+                                            <p><?php echo esc_html($sighting->scene_description); ?></p>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <?php if (!empty($sighting->verification_level)) : ?>
+                                        <span class="watch-verification watch-verification-<?php echo esc_attr(strtolower($sighting->verification_level)); ?>">
+                                            <?php echo esc_html(ucfirst($sighting->verification_level)); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php elseif (!empty($legacy_sightings)) : ?>
+                <div class="movie-watches">
+                    <h2>Watches Worn in This Film (Legacy Data)</h2>
+                    <div class="watch-list">
+                        <?php foreach ($legacy_sightings as $sighting) : ?>
+                            <div class="watch-item">
                                 <div class="watch-details">
                                     <h3 class="watch-model">
                                         <?php echo esc_html($sighting->brand_name); ?>
@@ -114,24 +151,10 @@ while (have_posts()) : the_post();
                                         <?php endif; ?>
                                     </p>
 
-                                    <?php if (!empty($sighting->narrative_role)) : ?>
-                                        <div class="watch-narrative">
-                                            <?php echo wp_kses_post(wpautop($sighting->narrative_role)); ?>
-                                        </div>
-                                    <?php endif; ?>
-
                                     <?php if (!empty($sighting->verification_level)) : ?>
                                         <span class="watch-verification watch-verification-<?php echo esc_attr(strtolower($sighting->verification_level)); ?>">
                                             <?php echo esc_html($sighting->verification_level); ?>
                                         </span>
-                                    <?php endif; ?>
-
-                                    <?php if (!empty($sighting->source_url)) : ?>
-                                        <p class="watch-source">
-                                            <a href="<?php echo esc_url($sighting->source_url); ?>" target="_blank" rel="noopener">
-                                                View Source →
-                                            </a>
-                                        </p>
                                     <?php endif; ?>
                                 </div>
                             </div>

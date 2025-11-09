@@ -65,3 +65,84 @@ function fww_ajax_get_movie_details() {
     wp_send_json_success($movie);
 }
 add_action('wp_ajax_fww_get_movie_details', 'fww_ajax_get_movie_details');
+
+/**
+ * AJAX handler for adding a watch sighting
+ */
+function fww_ajax_add_sighting() {
+    check_ajax_referer('fww_ajax_nonce', 'nonce');
+
+    // Check user permissions
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error('Insufficient permissions');
+        return;
+    }
+
+    // Get and validate data
+    $movie_id = isset($_POST['movie_id']) ? intval($_POST['movie_id']) : 0;
+    $actor_id = isset($_POST['actor_id']) ? intval($_POST['actor_id']) : 0;
+    $watch_id = isset($_POST['watch_id']) ? intval($_POST['watch_id']) : 0;
+    $brand_id = isset($_POST['brand_id']) ? intval($_POST['brand_id']) : 0;
+
+    if (empty($movie_id) || empty($actor_id) || empty($watch_id) || empty($brand_id)) {
+        wp_send_json_error('Missing required fields');
+        return;
+    }
+
+    // Prepare sighting data
+    $sighting_data = array(
+        'movie_id' => $movie_id,
+        'actor_id' => $actor_id,
+        'character_name' => isset($_POST['character_name']) ? sanitize_text_field($_POST['character_name']) : '',
+        'watch_id' => $watch_id,
+        'brand_id' => $brand_id,
+        'scene_description' => isset($_POST['scene_description']) ? sanitize_textarea_field($_POST['scene_description']) : '',
+        'verification_level' => isset($_POST['verification_level']) ? sanitize_text_field($_POST['verification_level']) : 'unverified'
+    );
+
+    // Add the sighting
+    $sighting_id = FWW_Sightings::add_sighting($sighting_data);
+
+    if ($sighting_id === false) {
+        wp_send_json_error('Failed to add sighting');
+        return;
+    }
+
+    wp_send_json_success(array(
+        'sighting_id' => $sighting_id,
+        'message' => 'Watch sighting added successfully'
+    ));
+}
+add_action('wp_ajax_fww_add_sighting', 'fww_ajax_add_sighting');
+
+/**
+ * AJAX handler for deleting a watch sighting
+ */
+function fww_ajax_delete_sighting() {
+    check_ajax_referer('fww_ajax_nonce', 'nonce');
+
+    // Check user permissions
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error('Insufficient permissions');
+        return;
+    }
+
+    $sighting_id = isset($_POST['sighting_id']) ? intval($_POST['sighting_id']) : 0;
+
+    if (empty($sighting_id)) {
+        wp_send_json_error('Invalid sighting ID');
+        return;
+    }
+
+    $result = FWW_Sightings::delete_sighting($sighting_id);
+
+    if (!$result) {
+        wp_send_json_error('Failed to delete sighting');
+        return;
+    }
+
+    wp_send_json_success(array(
+        'message' => 'Watch sighting deleted successfully'
+    ));
+}
+add_action('wp_ajax_fww_delete_sighting', 'fww_ajax_delete_sighting');

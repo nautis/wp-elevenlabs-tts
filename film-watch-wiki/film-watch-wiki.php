@@ -61,6 +61,7 @@ class Film_Watch_Wiki {
         require_once FWW_PLUGIN_DIR . 'includes/movie-functions.php';
         require_once FWW_PLUGIN_DIR . 'includes/template-loader.php';
         require_once FWW_PLUGIN_DIR . 'includes/ajax-handlers.php';
+        require_once FWW_PLUGIN_DIR . 'includes/sightings.php';
 
         // Load admin files only in admin
         if (is_admin()) {
@@ -103,6 +104,9 @@ class Film_Watch_Wiki {
         // Register post types for flush_rewrite_rules() to work
         FWW_Post_Types::register_post_types();
 
+        // Create database tables
+        FWW_Sightings::create_table();
+
         // Flush rewrite rules
         flush_rewrite_rules();
     }
@@ -141,7 +145,7 @@ class Film_Watch_Wiki {
     public function enqueue_admin_assets($hook) {
         // Only load on our post types
         $screen = get_current_screen();
-        if (!$screen || !in_array($screen->post_type, array('fww_movie', 'fww_actor', 'fww_watch'))) {
+        if (!$screen || !in_array($screen->post_type, array('fww_movie', 'fww_actor', 'fww_watch', 'fww_brand'))) {
             return;
         }
 
