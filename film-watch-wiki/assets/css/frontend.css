@@ -513,6 +513,126 @@ body.single-fww_brand .post-inner {
 }
 
 /* ========================================
+   Actor Header (Profile Photo + Bio Side-by-Side)
+   ======================================== */
+
+.fww-actor-layout .actor-header-wrapper {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 2.5rem;
+    margin-bottom: 2.5rem;
+    align-items: flex-start;
+}
+
+.fww-actor-layout .actor-profile {
+    flex: 0 0 300px !important;
+    width: 300px !important;
+    max-width: 300px !important;
+}
+
+.fww-actor-layout .actor-profile img {
+    width: 300px !important;
+    height: 450px !important;
+    max-width: 300px !important;
+    max-height: 450px !important;
+    min-width: 300px !important;
+    min-height: 450px !important;
+    display: block;
+    border-radius: 8px;
+    object-fit: cover !important;
+}
+
+.fww-actor-layout .actor-header-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.fww-actor-layout .entry-title {
+    font-size: 2.2em;
+    font-weight: 700;
+    margin: 0 0 1rem 0;
+    line-height: 1.2;
+}
+
+.fww-actor-layout .actor-bio-info {
+    margin: 0.75rem 0 1rem 0;
+}
+
+.fww-actor-layout .actor-bio-info p {
+    margin: 0.5rem 0;
+    font-size: 1.05em;
+}
+
+.fww-actor-layout .actor-aliases {
+    margin: 0.75rem 0 1rem 0;
+    opacity: 0.8;
+}
+
+.fww-actor-layout .actor-aliases p {
+    margin: 0;
+    font-size: 0.95em;
+}
+
+.fww-actor-layout .actor-biography {
+    margin-top: 1.5rem;
+}
+
+.fww-actor-layout .actor-biography h2 {
+    font-size: 1.4em;
+    font-weight: 700;
+    margin: 0 0 0.75rem 0;
+}
+
+.fww-actor-layout .actor-biography p {
+    line-height: 1.6;
+    margin: 0;
+}
+
+.fww-actor-layout .entry-content {
+    margin-top: 3rem;
+}
+
+.fww-actor-layout .entry-content h2 {
+    font-size: 1.4em;
+    font-weight: 700;
+    margin: 0 0 1.25rem 0;
+}
+
+/* Actor page list styling */
+.fww-actor-layout .fww-simple-list {
+    list-style: disc;
+    padding-left: 2rem;
+    margin: 1rem 0;
+}
+
+.fww-actor-layout .fww-simple-list li {
+    margin: 0.75rem 0;
+    line-height: 1.6;
+}
+
+.fww-actor-layout .fww-simple-list a {
+    text-decoration: none;
+    color: #1976d2;
+}
+
+.fww-actor-layout .fww-simple-list a:hover {
+    text-decoration: underline;
+}
+
+/* Responsive design for actor pages */
+@media (max-width: 992px) {
+    .fww-actor-layout .actor-header-wrapper {
+        flex-direction: column !important;
+    }
+
+    .fww-actor-layout .actor-profile {
+        width: 100%;
+        max-width: 300px;
+        margin: 0 auto;
+    }
+}
+
+/* ========================================
    Archive Pages (IWMDB-style alphabetical)
    ======================================== */
 

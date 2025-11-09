@@ -377,13 +377,17 @@ class FWW_TMDB_API {
 
         return array(
             'id' => $response['id'],
-            'name' => $response['name'],
+            'name' => isset($response['name']) ? $response['name'] : '',
             'biography' => isset($response['biography']) ? $response['biography'] : '',
-            'birthday' => isset($response['birthday']) ? $response['birthday'] : '',
+            'birthday' => isset($response['birthday']) ? $response['birthday'] : null,
+            'deathday' => isset($response['deathday']) ? $response['deathday'] : null,
             'place_of_birth' => isset($response['place_of_birth']) ? $response['place_of_birth'] : '',
             'profile_path' => isset($response['profile_path']) ? $response['profile_path'] : null,
-            'profile_url' => isset($response['profile_path']) ? self::get_image_url($response['profile_path'], 'w185') : null,
-            'known_for_department' => isset($response['known_for_department']) ? $response['known_for_department'] : ''
+            'profile_url' => isset($response['profile_path']) ? self::get_image_url($response['profile_path'], 'w500') : null,
+            'also_known_as' => isset($response['also_known_as']) ? $response['also_known_as'] : array(),
+            'known_for_department' => isset($response['known_for_department']) ? $response['known_for_department'] : '',
+            'imdb_id' => isset($response['imdb_id']) ? $response['imdb_id'] : '',
+            'gender' => isset($response['gender']) ? $response['gender'] : 0
         );
     }
 

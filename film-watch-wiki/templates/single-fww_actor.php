@@ -13,6 +13,10 @@ get_header(); ?>
 while (have_posts()) : the_post();
     $post_id = get_the_ID();
 
+    // Get TMDB actor data
+    $actor_data = fww_get_actor_data($post_id);
+    $tmdb_data = $actor_data['tmdb_data'];
+
     // Get watch sightings for this actor
     $sightings = FWW_Sightings::get_sightings_by_actor($post_id);
 
@@ -40,10 +44,58 @@ while (have_posts()) : the_post();
     }
     ?>
 
-    <article id="post-<?php the_ID(); ?>" <?php post_class('fww-simple-layout'); ?>>
+    <article id="post-<?php the_ID(); ?>" <?php post_class('fww-actor-layout'); ?>>
 
-        <div class="fww-simple-header">
-            <h1 class="entry-title"><?php the_title(); ?></h1>
+        <div class="actor-header-wrapper">
+            <?php if (!empty($tmdb_data['profile_url'])) : ?>
+                <div class="actor-profile">
+                    <img src="<?php echo esc_url($tmdb_data['profile_url']); ?>"
+                         alt="<?php echo esc_attr(get_the_title()); ?> profile photo"
+                         class="actor-profile-photo"
+                         width="300"
+                         height="450" />
+                </div>
+            <?php endif; ?>
+
+            <div class="actor-header-content">
+                <h1 class="entry-title"><?php the_title(); ?></h1>
+
+                <?php if (!empty($tmdb_data['birthday']) || !empty($tmdb_data['place_of_birth'])) : ?>
+                    <div class="actor-bio-info">
+                        <?php if (!empty($tmdb_data['birthday'])) :
+                            $birth_date = date('F j, Y', strtotime($tmdb_data['birthday']));
+                            ?>
+                            <p class="actor-born">
+                                <strong>Born:</strong> <?php echo esc_html($birth_date); ?>
+                                <?php if (!empty($tmdb_data['place_of_birth'])) : ?>
+                                    in <?php echo esc_html($tmdb_data['place_of_birth']); ?>
+                                <?php endif; ?>
+                            </p>
+                        <?php endif; ?>
+
+                        <?php if (!empty($tmdb_data['deathday'])) :
+                            $death_date = date('F j, Y', strtotime($tmdb_data['deathday']));
+                            ?>
+                            <p class="actor-died">
+                                <strong>Died:</strong> <?php echo esc_html($death_date); ?>
+                            </p>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (!empty($tmdb_data['also_known_as']) && count($tmdb_data['also_known_as']) > 0) : ?>
+                    <div class="actor-aliases">
+                        <p><strong>Also Known As:</strong> <?php echo esc_html(implode(', ', array_slice($tmdb_data['also_known_as'], 0, 3))); ?></p>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (!empty($tmdb_data['biography'])) : ?>
+                    <div class="actor-biography">
+                        <h2>Biography</h2>
+                        <p><?php echo nl2br(esc_html($tmdb_data['biography'])); ?></p>
+                    </div>
+                <?php endif; ?>
+            </div>
         </div>
 
         <div class="entry-content">

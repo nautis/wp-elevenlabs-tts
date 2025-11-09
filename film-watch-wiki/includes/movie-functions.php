@@ -57,6 +57,49 @@ function fww_get_movie_data($post_id) {
 }
 
 /**
+ * Get actor data for a post
+ *
+ * @param int $post_id The actor post ID
+ * @return array Actor data including TMDB person data
+ */
+function fww_get_actor_data($post_id) {
+    $tmdb_person_id = get_post_meta($post_id, '_fww_tmdb_person_id', true);
+
+    // Try to get cached TMDB person data
+    $tmdb_data = get_post_meta($post_id, '_fww_tmdb_person_data', true);
+
+    // If no cached data, fetch from TMDB
+    if (empty($tmdb_data) && !empty($tmdb_person_id)) {
+        // Use transient locking to prevent race conditions
+        $lock_key = 'fww_fetching_person_' . $tmdb_person_id;
+
+        if (false === get_transient($lock_key)) {
+            // Set lock for 30 seconds
+            set_transient($lock_key, true, 30);
+
+            $tmdb_data = FWW_TMDB_API::get_person($tmdb_person_id);
+
+            if ($tmdb_data && !is_wp_error($tmdb_data)) {
+                // Cache the data
+                update_post_meta($post_id, '_fww_tmdb_person_data', $tmdb_data);
+            }
+
+            // Release lock
+            delete_transient($lock_key);
+        } else {
+            // Another process is fetching, wait and retry
+            sleep(1);
+            $tmdb_data = get_post_meta($post_id, '_fww_tmdb_person_data', true);
+        }
+    }
+
+    return array(
+        'tmdb_person_id' => $tmdb_person_id,
+        'tmdb_data' => $tmdb_data
+    );
+}
+
+/**
  * Get watch sightings for a movie
  * Queries the existing wp_fwd_film_actor_watch table
  *
