@@ -167,6 +167,37 @@ class FWW_TMDB_API {
     }
 
     /**
+     * Search for a specific movie by title and optional year
+     *
+     * @param string $title Movie title
+     * @param int|null $year Release year (optional but highly recommended for accuracy)
+     * @return array|WP_Error Search results with 'results' array or error
+     */
+    public static function search_movie($title, $year = null) {
+        if (empty($title)) {
+            return new WP_Error('empty_title', 'Movie title cannot be empty');
+        }
+
+        $params = array(
+            'query' => $title,
+            'include_adult' => false
+        );
+
+        // Add year if provided for more accurate results
+        if (!empty($year) && is_numeric($year)) {
+            $params['year'] = $year;
+        }
+
+        $response = self::make_request('search/movie', $params);
+
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        return $response; // Return full response including 'results' array
+    }
+
+    /**
      * Get movie details by ID
      *
      * @param int $movie_id TMDB movie ID
