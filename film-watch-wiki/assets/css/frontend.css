@@ -415,3 +415,60 @@ body.single-fww_brand .post-inner {
         margin: 0 auto;
     }
 }
+
+/* ========================================
+   Simple IWMDB-Style Layout
+   ======================================== */
+
+.fww-simple-layout .fww-simple-header {
+    margin-bottom: 2rem;
+}
+
+.fww-simple-layout .entry-title {
+    font-size: 2em;
+    font-weight: 700;
+    margin: 0 0 1rem 0;
+}
+
+.fww-simple-layout .fww-stats {
+    margin: 1.5rem 0;
+    padding: 1rem 0;
+    border-top: 1px solid #e0e0e0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.fww-simple-layout .fww-stats p {
+    margin: 0.5rem 0;
+    font-size: 1.1em;
+}
+
+.fww-simple-layout .fww-description {
+    margin: 1.5rem 0 2rem 0;
+    line-height: 1.6;
+}
+
+.fww-simple-layout h2 {
+    font-size: 1.5em;
+    font-weight: 700;
+    margin: 2rem 0 1rem 0;
+}
+
+.fww-simple-layout .fww-simple-list {
+    list-style: disc;
+    padding-left: 2rem;
+    margin: 1rem 0;
+}
+
+.fww-simple-layout .fww-simple-list li {
+    margin: 0.75rem 0;
+    line-height: 1.6;
+}
+
+.fww-simple-layout .fww-simple-list a {
+    text-decoration: none;
+    color: #1976d2;
+}
+
+.fww-simple-layout .fww-simple-list a:hover {
+    text-decoration: underline;
+}

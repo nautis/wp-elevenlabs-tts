@@ -1,7 +1,7 @@
 <?php
 /**
- * Single Brand Template
- * Displays a brand page with all films where the brand appears
+ * Single Brand Template (Simple IWMDB-style)
+ * Displays a brand page with watch models and appearance counts
  */
 
 get_header(); ?>
@@ -16,113 +16,66 @@ while (have_posts()) : the_post();
     // Get watch sightings for this brand
     $sightings = FWW_Sightings::get_sightings_by_brand($post_id);
 
-    // Group sightings by movie
-    $movies_data = array();
+    // Count total appearances
+    $total_appearances = count($sightings);
+
+    // Group by watch model and count appearances
+    $watch_models = array();
     foreach ($sightings as $sighting) {
-        if (!isset($movies_data[$sighting->movie_id])) {
-            $movies_data[$sighting->movie_id] = array(
-                'movie_title' => $sighting->movie_title,
-                'movie_id' => $sighting->movie_id,
-                'sightings' => array()
+        if (!isset($watch_models[$sighting->watch_id])) {
+            $watch_models[$sighting->watch_id] = array(
+                'name' => $sighting->watch_name,
+                'id' => $sighting->watch_id,
+                'count' => 0
             );
         }
-        $movies_data[$sighting->movie_id]['sightings'][] = $sighting;
+        $watch_models[$sighting->watch_id]['count']++;
     }
 
-    // Count unique watches and actors
-    $unique_watches = array();
-    $unique_actors = array();
-    foreach ($sightings as $sighting) {
-        $unique_watches[$sighting->watch_id] = $sighting->watch_name;
-        $unique_actors[$sighting->actor_id] = $sighting->actor_name;
-    }
+    // Sort by appearance count (descending)
+    usort($watch_models, function($a, $b) {
+        return $b['count'] - $a['count'];
+    });
     ?>
 
-    <article id="post-<?php the_ID(); ?>" <?php post_class(); ?>>
+    <article id="post-<?php the_ID(); ?>" <?php post_class('fww-simple-layout'); ?>>
 
-        <header class="entry-header">
-            <?php if (has_post_thumbnail()) : ?>
-                <div class="brand-logo">
-                    <?php the_post_thumbnail('medium'); ?>
+        <div class="fww-simple-header">
+            <h1 class="entry-title"><?php the_title(); ?></h1>
+
+            <?php if (!empty($watch_models)) : ?>
+                <div class="fww-stats">
+                    <p><strong><?php echo get_the_title(); ?></strong> has <strong><?php echo count($watch_models); ?></strong> watch <?php echo count($watch_models) === 1 ? 'model' : 'models'; ?> documented in Film Watch Wiki.</p>
+                    <p><strong>Total Film Appearances:</strong> <?php echo $total_appearances; ?></p>
                 </div>
             <?php endif; ?>
-
-            <div class="brand-header-content">
-                <h1 class="entry-title"><?php the_title(); ?></h1>
-
-                <?php if (!empty($movies_data)) : ?>
-                    <div class="brand-stats">
-                        <span class="stat-item"><?php echo count($movies_data); ?> films</span>
-                        <span class="stat-item"><?php echo count($unique_watches); ?> watches</span>
-                        <span class="stat-item"><?php echo count($unique_actors); ?> actors</span>
-                    </div>
-                <?php endif; ?>
-
-                <?php if (has_excerpt()) : ?>
-                    <div class="brand-description">
-                        <?php the_excerpt(); ?>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </header>
+        </div>
 
         <div class="entry-content">
-            <?php the_content(); ?>
-
-            <!-- Film Appearances Section -->
-            <?php if (!empty($movies_data)) : ?>
-                <div class="brand-appearances">
-                    <h2>Appearances in Films</h2>
-                    <div class="appearances-list">
-                        <?php foreach ($movies_data as $movie) : ?>
-                            <div class="appearance-item">
-                                <h3>
-                                    <a href="<?php echo get_permalink($movie['movie_id']); ?>">
-                                        <?php echo esc_html($movie['movie_title']); ?>
-                                    </a>
-                                </h3>
-
-                                <ul class="sightings-in-film">
-                                    <?php foreach ($movie['sightings'] as $sighting) : ?>
-                                        <li>
-                                            <?php if (!empty($sighting->screenshot_url)) : ?>
-                                                <div class="watch-screenshot-thumb">
-                                                    <img src="<?php echo esc_url($sighting->screenshot_url); ?>"
-                                                         alt="<?php echo esc_attr($sighting->actor_name . ' wearing ' . $sighting->watch_name); ?>"
-                                                         class="fww-sighting-thumbnail" />
-                                                </div>
-                                            <?php endif; ?>
-
-                                            <div class="sighting-info">
-                                                <a href="<?php echo get_permalink($sighting->watch_id); ?>">
-                                                    <strong><?php echo esc_html($sighting->watch_name); ?></strong>
-                                                </a>
-                                                worn by
-                                                <a href="<?php echo get_permalink($sighting->actor_id); ?>">
-                                                    <?php echo esc_html($sighting->actor_name); ?>
-                                                </a>
-                                                <?php if (!empty($sighting->character_name)) : ?>
-                                                    <span class="character-note">
-                                                        (as <?php echo esc_html($sighting->character_name); ?>)
-                                                    </span>
-                                                <?php endif; ?>
-
-                                                <?php if (!empty($sighting->scene_description)) : ?>
-                                                    <p class="scene-note"><?php echo esc_html($sighting->scene_description); ?></p>
-                                                <?php endif; ?>
-                                            </div>
-                                        </li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
+            <?php
+            $content = get_the_content();
+            if (!empty(trim($content))) : ?>
+                <div class="fww-description">
+                    <?php the_content(); ?>
                 </div>
-            <?php else : ?>
-                <p><em>No film appearances documented yet for this brand.</em></p>
             <?php endif; ?>
 
-        </div><!-- .entry-content -->
+            <?php if (!empty($watch_models)) : ?>
+                <h2>Watch Models</h2>
+                <ul class="fww-simple-list">
+                    <?php foreach ($watch_models as $watch) : ?>
+                        <li>
+                            <a href="<?php echo get_permalink($watch['id']); ?>">
+                                <?php echo esc_html($watch['name']); ?>
+                            </a>
+                            - <?php echo $watch['count']; ?> <?php echo $watch['count'] === 1 ? 'appearance' : 'appearances'; ?>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php else : ?>
+                <p><em>No watch models documented yet for this brand.</em></p>
+            <?php endif; ?>
+        </div>
 
     </article>
 
