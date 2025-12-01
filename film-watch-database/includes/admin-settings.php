@@ -307,6 +307,7 @@ function fwd_merge_brands($wrong_brand_id, $correct_brand_id) {
 
     $table_brands = $wpdb->prefix . 'fwd_brands';
     $table_watches = $wpdb->prefix . 'fwd_watches';
+    $table_search_index = $wpdb->prefix . 'fwd_search_index';
 
     // Get brand names for confirmation message
     $wrong_brand = $wpdb->get_var($wpdb->prepare("SELECT brand_name FROM {$table_brands} WHERE brand_id = %d", $wrong_brand_id));
@@ -318,10 +319,19 @@ function fwd_merge_brands($wrong_brand_id, $correct_brand_id) {
     if ($watch_count > 0) {
         // Update all watches to use correct brand
         $wpdb->update($table_watches, array('brand_id' => $correct_brand_id), array('brand_id' => $wrong_brand_id));
+
+        // Update search index - change brand name for all affected entries
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$table_search_index} SET brand_name = %s WHERE brand_name = %s",
+            $correct_brand, $wrong_brand
+        ));
     }
 
     // Delete the wrong brand
     $wpdb->delete($table_brands, array('brand_id' => $wrong_brand_id), array('%d'));
+
+    // Clear search caches
+    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_fwd_%' OR option_name LIKE '_transient_timeout_fwd_%'");
 
     return "✓ Merged {$watch_count} watches from '{$wrong_brand}' into '{$correct_brand}' and deleted incorrect brand.";
 }
@@ -336,6 +346,7 @@ function fwd_merge_watches($wrong_watch_id, $correct_watch_id) {
     $table_watches = $wpdb->prefix . 'fwd_watches';
     $table_brands = $wpdb->prefix . 'fwd_brands';
     $table_film_actor_watch = $wpdb->prefix . 'fwd_film_actor_watch';
+    $table_search_index = $wpdb->prefix . 'fwd_search_index';
 
     // Get watch details for confirmation message
     $wrong_watch = $wpdb->get_row($wpdb->prepare("
@@ -352,16 +363,32 @@ function fwd_merge_watches($wrong_watch_id, $correct_watch_id) {
         WHERE w.watch_id = %d
     ", $correct_watch_id));
 
+    // Get affected faw_ids before update
+    $affected_faw_ids = $wpdb->get_col($wpdb->prepare(
+        "SELECT faw_id FROM {$table_film_actor_watch} WHERE watch_id = %d",
+        $wrong_watch_id
+    ));
+
     // Count entries that will be affected
-    $entry_count = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table_film_actor_watch} WHERE watch_id = %d", $wrong_watch_id));
+    $entry_count = count($affected_faw_ids);
 
     if ($entry_count > 0) {
         // Update all entries to use correct watch
         $wpdb->update($table_film_actor_watch, array('watch_id' => $correct_watch_id), array('watch_id' => $wrong_watch_id));
+
+        // Update search index for affected entries
+        $faw_ids_placeholder = implode(',', array_map('intval', $affected_faw_ids));
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$table_search_index} SET model_reference = %s WHERE faw_id IN ({$faw_ids_placeholder})",
+            $correct_watch->model_reference
+        ));
     }
 
     // Delete the wrong watch
     $wpdb->delete($table_watches, array('watch_id' => $wrong_watch_id), array('%d'));
+
+    // Clear search caches
+    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_fwd_%' OR option_name LIKE '_transient_timeout_fwd_%'");
 
     return "✓ Merged {$entry_count} entries from '{$wrong_watch->brand_name} {$wrong_watch->model_reference}' into '{$correct_watch->brand_name} {$correct_watch->model_reference}' and deleted duplicate watch.";
 }
@@ -459,21 +486,38 @@ function fwd_merge_characters($wrong_character_id, $correct_character_id) {
 
     $table_characters = $wpdb->prefix . 'fwd_characters';
     $table_film_actor_watch = $wpdb->prefix . 'fwd_film_actor_watch';
+    $table_search_index = $wpdb->prefix . 'fwd_search_index';
 
     // Get character names for confirmation message
     $wrong_char = $wpdb->get_var($wpdb->prepare("SELECT character_name FROM {$table_characters} WHERE character_id = %d", $wrong_character_id));
     $correct_char = $wpdb->get_var($wpdb->prepare("SELECT character_name FROM {$table_characters} WHERE character_id = %d", $correct_character_id));
 
+    // Get affected faw_ids before update
+    $affected_faw_ids = $wpdb->get_col($wpdb->prepare(
+        "SELECT faw_id FROM {$table_film_actor_watch} WHERE character_id = %d",
+        $wrong_character_id
+    ));
+
     // Count entries that will be affected
-    $entry_count = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table_film_actor_watch} WHERE character_id = %d", $wrong_character_id));
+    $entry_count = count($affected_faw_ids);
 
     if ($entry_count > 0) {
         // Update all entries to use correct character
         $wpdb->update($table_film_actor_watch, array('character_id' => $correct_character_id), array('character_id' => $wrong_character_id));
+
+        // Update search index for affected entries
+        $faw_ids_placeholder = implode(',', array_map('intval', $affected_faw_ids));
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$table_search_index} SET character_name = %s WHERE faw_id IN ({$faw_ids_placeholder})",
+            $correct_char
+        ));
     }
 
     // Delete the wrong character
     $wpdb->delete($table_characters, array('character_id' => $wrong_character_id), array('%d'));
+
+    // Clear search caches
+    $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_fwd_%' OR option_name LIKE '_transient_timeout_fwd_%'");
 
     return "✓ Merged {$entry_count} entries from '{$wrong_char}' into '{$correct_char}' and deleted duplicate character.";
 }
@@ -1260,7 +1304,7 @@ function fwd_settings_page() {
                         <td>
                             <?php if (defined('FWD_CLAUDE_API_KEY')): ?>
                                 <input type="password" id="fwd_claude_api_key" name="fwd_claude_api_key"
-                                       value="<?php echo esc_attr(FWD_CLAUDE_API_KEY); ?>"
+                                       value="••••••••••••••••"
                                        class="regular-text"
                                        disabled
                                        placeholder="sk-ant-api03-...">
@@ -1290,17 +1334,6 @@ function fwd_settings_page() {
                     <tr>
                         <th scope="row"><label for="fwd_ai_confidence_threshold">Confidence Threshold</label></th>
                         <td>
-                            <input type="range" id="fwd_ai_confidence_threshold" name="fwd_ai_confidence_threshold"
-                                   min="0" max="1" step="0.1"
-                                   value="<?php echo esc_attr($threshold); ?>"
-                                   oninput="this.nextElementSibling.textContent = this.value">
-                            <span style="display: inline-block; width: 40px; text-align: center; font-weight: bold;"><?php echo esc_html($threshold); ?></span>
-                            <p class="description">
-                                If regex confidence is below this threshold, AI will be used.
-                                <strong>0.7 recommended</strong> (lower = use AI more often)
-                            </p>
-                        </td>
-                    </tr>
                             <input type="range" id="fwd_ai_confidence_threshold" name="fwd_ai_confidence_threshold"
                                    min="0" max="1" step="0.1"
                                    value="<?php echo esc_attr($threshold); ?>"
@@ -2572,32 +2605,75 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
 
         <!-- Brand Merge Tool -->
         <div style="background: #fff3cd; padding: 20px; border-left: 4px solid #ff9800; margin: 20px 0;">
-            <h3 style="margin-top: 0;">Fix: Merge "Porsche" into "Porsche Design"</h3>
-            <p>The brand "Porsche" was incorrectly created by the parser. It should be "Porsche Design".</p>
-            <p>This tool will reassign all watches from "Porsche" (brand_id: 515) to "Porsche Design" (brand_id: 146) and delete the incorrect brand.</p>
+            <h3 style="margin-top: 0;">Merge Brands</h3>
+            <p>Merge one brand into another. All watches from the source brand will be reassigned to the target brand, and the source brand will be deleted.</p>
 
             <?php
-            // Check if Porsche brand exists
+            // Get all brands with watch counts
             $table_brands = $wpdb->prefix . 'fwd_brands';
-            $porsche_exists = $wpdb->get_var("SELECT COUNT(*) FROM {$table_brands} WHERE brand_id = 515");
+            $table_watches = $wpdb->prefix . 'fwd_watches';
+            $all_brands = $wpdb->get_results("
+                SELECT b.brand_id, b.brand_name, COUNT(w.watch_id) as watch_count
+                FROM {$table_brands} b
+                LEFT JOIN {$table_watches} w ON b.brand_id = w.brand_id
+                GROUP BY b.brand_id, b.brand_name
+                ORDER BY b.brand_name ASC
+            ");
 
-            if ($porsche_exists) {
-                $watch_count = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}fwd_watches WHERE brand_id = 515");
-                echo '<p style="color: #dc3232;"><strong>⚠ Found incorrect "Porsche" brand with ' . intval($watch_count) . ' watches.</strong></p>';
-                ?>
-                <form method="post" style="margin: 10px 0;">
-                    <?php wp_nonce_field('fwd_brand_merge_action', 'fwd_brand_merge_nonce'); ?>
-                    <input type="hidden" name="wrong_brand_id" value="515">
-                    <input type="hidden" name="correct_brand_id" value="146">
-                    <button type="submit" name="fwd_merge_brands" class="button button-primary" onclick="return confirm('Merge <?php echo intval($watch_count); ?> watches from Porsche to Porsche Design?');">
-                        Fix Porsche Brand Now
-                    </button>
-                </form>
-                <?php
-            } else {
-                echo '<p style="color: #46b450;"><strong>✓ No "Porsche" brand found. All good!</strong></p>';
-            }
+            if (!empty($all_brands)):
             ?>
+            <form method="post" style="margin: 10px 0;">
+                <?php wp_nonce_field('fwd_brand_merge_action', 'fwd_brand_merge_nonce'); ?>
+                <table class="form-table" style="margin: 0;">
+                    <tr>
+                        <th scope="row"><label for="wrong_brand_id">Merge this brand:</label></th>
+                        <td>
+                            <select name="wrong_brand_id" id="wrong_brand_id" required style="min-width: 300px;">
+                                <option value="">-- Select source brand to merge --</option>
+                                <?php foreach ($all_brands as $brand): ?>
+                                    <option value="<?php echo esc_attr($brand->brand_id); ?>">
+                                        <?php echo esc_html($brand->brand_name); ?> (<?php echo intval($brand->watch_count); ?> watches)
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="correct_brand_id">Into this brand:</label></th>
+                        <td>
+                            <select name="correct_brand_id" id="correct_brand_id" required style="min-width: 300px;">
+                                <option value="">-- Select target brand --</option>
+                                <?php foreach ($all_brands as $brand): ?>
+                                    <option value="<?php echo esc_attr($brand->brand_id); ?>">
+                                        <?php echo esc_html($brand->brand_name); ?> (<?php echo intval($brand->watch_count); ?> watches)
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </td>
+                    </tr>
+                </table>
+                <p style="margin-top: 15px;">
+                    <button type="submit" name="fwd_merge_brands" class="button button-primary" onclick="return confirm('Are you sure you want to merge these brands? This cannot be undone.');">
+                        Merge Brands
+                    </button>
+                </p>
+            </form>
+            <script>
+            jQuery(document).ready(function($) {
+                // Prevent selecting same brand for both dropdowns
+                $('#wrong_brand_id, #correct_brand_id').on('change', function() {
+                    var wrongId = $('#wrong_brand_id').val();
+                    var correctId = $('#correct_brand_id').val();
+                    if (wrongId && correctId && wrongId === correctId) {
+                        alert('Cannot merge a brand into itself. Please select different brands.');
+                        $(this).val('');
+                    }
+                });
+            });
+            </script>
+            <?php else: ?>
+                <p style="color: #46b450;"><strong>✓ No brands found in database.</strong></p>
+            <?php endif; ?>
         </div>
 
         <!-- Duplicate Watch Models Finder -->
