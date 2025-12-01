@@ -185,13 +185,26 @@ class Film_Watch_Database {
      * Enqueue admin styles and scripts
      */
     public function enqueue_admin_assets($hook) {
-        // Only load on our settings page
-        if ('settings_page_film-watch-database' !== $hook) {
+        // Only load on our plugin pages (main menu and submenus)
+        $allowed_hooks = array(
+            'toplevel_page_film-watch-database',
+            'film-watch-db_page_fwd-manage-records',
+            'film-watch-db_page_fwd-ai-parser',
+            'film-watch-db_page_fwd-shortcodes',
+            'film-watch-db_page_fwd-maintenance',
+            'settings_page_film-watch-database'  // Backwards compatibility
+        );
+
+        if (!in_array($hook, $allowed_hooks)) {
             return;
         }
 
         // Enqueue WordPress media library for image uploads
         wp_enqueue_media();
+
+        // Enqueue jQuery UI autocomplete (included in WordPress core)
+        wp_enqueue_script('jquery-ui-autocomplete');
+        wp_enqueue_style('wp-jquery-ui-dialog');
 
         // Enqueue frontend CSS and JS (needed for entry form on admin page)
         wp_enqueue_style(
@@ -226,7 +239,7 @@ class Film_Watch_Database {
         wp_enqueue_script(
             'fwd-admin',
             FWD_PLUGIN_URL . 'assets/js/admin.js',
-            array('jquery'),
+            array('jquery', 'jquery-ui-autocomplete'),
             FWD_VERSION,
             true
         );
@@ -236,7 +249,7 @@ class Film_Watch_Database {
      * Add settings link on plugins page
      */
     public function add_settings_link($links) {
-        $settings_link = '<a href="options-general.php?page=film-watch-database">Settings</a>';
+        $settings_link = '<a href="admin.php?page=film-watch-database">Add Entry</a>';
         array_unshift($links, $settings_link);
         return $links;
     }

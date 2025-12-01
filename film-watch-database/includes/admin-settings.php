@@ -504,23 +504,230 @@ function fwd_ajax_delete_record() {
 add_action('wp_ajax_fwd_delete_record', 'fwd_ajax_delete_record');
 
 /**
+ * AJAX handler for TMDB movie search autocomplete
+ */
+function fwd_ajax_tmdb_search_movies() {
+    // Security check
+    check_ajax_referer('fwd_ajax_nonce', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Unauthorized'));
+    }
+
+    $query = isset($_GET['term']) ? sanitize_text_field($_GET['term']) : '';
+
+    if (empty($query) || strlen($query) < 2) {
+        wp_send_json(array());
+    }
+
+    // Load TMDB API class if not loaded
+    if (!class_exists('FWD_TMDB_API')) {
+        require_once FWD_PLUGIN_DIR . 'includes/tmdb-api.php';
+    }
+
+    $results = FWD_TMDB_API::search_movies($query);
+
+    if (is_wp_error($results)) {
+        wp_send_json_error(array('message' => $results->get_error_message()));
+    }
+
+    // Format for jQuery UI autocomplete
+    $formatted = array();
+    foreach ($results as $movie) {
+        $label = $movie['title'];
+        if (!empty($movie['year'])) {
+            $label .= ' (' . $movie['year'] . ')';
+        }
+
+        $formatted[] = array(
+            'label' => $label,
+            'value' => $movie['title'],
+            'id' => $movie['id'],
+            'title' => $movie['title'],
+            'year' => $movie['year'],
+            'poster_url' => $movie['poster_url'],
+            'overview' => $movie['overview']
+        );
+    }
+
+    wp_send_json($formatted);
+}
+add_action('wp_ajax_fwd_tmdb_search_movies', 'fwd_ajax_tmdb_search_movies');
+
+/**
+ * AJAX handler for TMDB actor/person search autocomplete
+ */
+function fwd_ajax_tmdb_search_actors() {
+    // Security check
+    check_ajax_referer('fwd_ajax_nonce', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Unauthorized'));
+    }
+
+    $query = isset($_GET['term']) ? sanitize_text_field($_GET['term']) : '';
+
+    if (empty($query) || strlen($query) < 2) {
+        wp_send_json(array());
+    }
+
+    // Load TMDB API class if not loaded
+    if (!class_exists('FWD_TMDB_API')) {
+        require_once FWD_PLUGIN_DIR . 'includes/tmdb-api.php';
+    }
+
+    $results = FWD_TMDB_API::search_people($query);
+
+    if (is_wp_error($results)) {
+        wp_send_json_error(array('message' => $results->get_error_message()));
+    }
+
+    // Format for jQuery UI autocomplete
+    $formatted = array();
+    foreach ($results as $person) {
+        $label = $person['name'];
+        if (!empty($person['known_for']) && count($person['known_for']) > 0) {
+            $known = array_slice($person['known_for'], 0, 2);
+            $titles = array_map(function($m) { return $m['title']; }, $known);
+            $label .= ' - ' . implode(', ', $titles);
+        }
+
+        $formatted[] = array(
+            'label' => $label,
+            'value' => $person['name'],
+            'id' => $person['id'],
+            'name' => $person['name'],
+            'profile_url' => $person['profile_url'],
+            'known_for' => $person['known_for']
+        );
+    }
+
+    wp_send_json($formatted);
+}
+add_action('wp_ajax_fwd_tmdb_search_actors', 'fwd_ajax_tmdb_search_actors');
+
+/**
+ * AJAX handler for getting movie credits (cast)
+ */
+function fwd_ajax_tmdb_get_movie_credits() {
+    // Security check
+    check_ajax_referer('fwd_ajax_nonce', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Unauthorized'));
+    }
+
+    $movie_id = isset($_GET['movie_id']) ? intval($_GET['movie_id']) : 0;
+
+    if (empty($movie_id)) {
+        wp_send_json_error(array('message' => 'Movie ID required'));
+    }
+
+    // Load TMDB API class if not loaded
+    if (!class_exists('FWD_TMDB_API')) {
+        require_once FWD_PLUGIN_DIR . 'includes/tmdb-api.php';
+    }
+
+    $cast = FWD_TMDB_API::get_movie_credits($movie_id, 15);
+
+    if (is_wp_error($cast)) {
+        wp_send_json_error(array('message' => $cast->get_error_message()));
+    }
+
+    wp_send_json_success(array('cast' => $cast));
+}
+add_action('wp_ajax_fwd_tmdb_get_movie_credits', 'fwd_ajax_tmdb_get_movie_credits');
+
+/**
  * Register admin menu
  */
 function fwd_add_admin_menu() {
-    add_options_page(
-        'Film Watch Database Settings',
+    // Main menu
+    add_menu_page(
+        'Film Watch Database',
         'Film Watch DB',
         'manage_options',
         'film-watch-database',
-        'fwd_settings_page'
+        'fwd_page_add_entry',
+        'dashicons-video-alt',
+        30
+    );
+
+    // Submenu pages
+    add_submenu_page(
+        'film-watch-database',
+        'Add New Entry',
+        'Add New Entry',
+        'manage_options',
+        'film-watch-database',
+        'fwd_page_add_entry'
+    );
+
+    add_submenu_page(
+        'film-watch-database',
+        'Manage Records',
+        'Manage Records',
+        'manage_options',
+        'fwd-manage-records',
+        'fwd_page_manage_records'
+    );
+
+    add_submenu_page(
+        'film-watch-database',
+        'AI Parser Settings',
+        'AI Parser Settings',
+        'manage_options',
+        'fwd-ai-parser',
+        'fwd_page_ai_parser'
+    );
+
+    add_submenu_page(
+        'film-watch-database',
+        'Shortcode Usage',
+        'Shortcode Usage',
+        'manage_options',
+        'fwd-shortcodes',
+        'fwd_page_shortcodes'
+    );
+
+    add_submenu_page(
+        'film-watch-database',
+        'Database Maintenance',
+        'Database Maintenance',
+        'manage_options',
+        'fwd-maintenance',
+        'fwd_page_maintenance'
     );
 }
 add_action('admin_menu', 'fwd_add_admin_menu');
 
 /**
- * Settings page HTML
+ * Page callback functions for each submenu
  */
-function fwd_settings_page() {
+function fwd_page_add_entry() {
+    fwd_render_admin_page('add-entry');
+}
+
+function fwd_page_manage_records() {
+    fwd_render_admin_page('manage-records');
+}
+
+function fwd_page_ai_parser() {
+    fwd_render_admin_page('ai-parser');
+}
+
+function fwd_page_shortcodes() {
+    fwd_render_admin_page('shortcodes');
+}
+
+function fwd_page_maintenance() {
+    fwd_render_admin_page('maintenance');
+}
+
+/**
+ * Render admin page content
+ */
+function fwd_render_admin_page($active_tab = 'add-entry') {
     if (!current_user_can('manage_options')) {
         wp_die('You do not have sufficient permissions to access this page.');
     }
@@ -563,25 +770,6 @@ function fwd_settings_page() {
         echo '<div class="notice notice-success is-dismissible"><p>✓ Search index rebuilt successfully.</p></div>';
     }
 
-    // Handle cleanup action
-    if (isset($_POST['fwd_global_cleanup']) && check_admin_referer('fwd_global_cleanup_action', 'fwd_global_cleanup_nonce')) {
-        $result = fwd_clean_all_escaped_data();
-        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($result) . '</p></div>';
-    }
-
-    // Handle actor/character split fix
-    if (isset($_POST['fwd_fix_actor_split']) && check_admin_referer('fwd_fix_actor_split_action', 'fwd_fix_actor_split_nonce')) {
-        $result = fwd_fix_actor_character_split();
-        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($result) . '</p></div>';
-    }
-
-    // Handle duplicate deletion
-    if (isset($_POST['fwd_delete_duplicate']) && check_admin_referer('fwd_duplicate_action', 'fwd_duplicate_nonce')) {
-        $faw_id = intval($_POST['faw_id']);
-        fwd_delete_duplicate($faw_id);
-        echo '<div class="notice notice-success is-dismissible"><p>✓ Duplicate entry deleted.</p></div>';
-    }
-
     // Handle brand merge
     if (isset($_POST['fwd_merge_brands']) && check_admin_referer('fwd_brand_merge_action', 'fwd_brand_merge_nonce')) {
         $wrong_brand_id = intval($_POST['wrong_brand_id']);
@@ -598,14 +786,6 @@ function fwd_settings_page() {
         echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($result) . '</p></div>';
     }
 
-    // Handle character merge
-    if (isset($_POST['fwd_merge_characters']) && check_admin_referer('fwd_character_merge_action', 'fwd_character_merge_nonce')) {
-        $wrong_character_id = intval($_POST['wrong_character_id']);
-        $correct_character_id = intval($_POST['correct_character_id']);
-        $result = fwd_merge_characters($wrong_character_id, $correct_character_id);
-        echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($result) . '</p></div>';
-    }
-
     // Get database stats
     global $wpdb;
     $stats = fwd_get_stats();
@@ -618,54 +798,21 @@ function fwd_settings_page() {
     $tmdb_language = get_option('fwd_tmdb_language', 'en');
     $tmdb_cache_hours = get_option('fwd_tmdb_cache_hours', 24);
 
+    // Page titles for each tab
+    $page_titles = array(
+        'add-entry' => 'Add New Entry',
+        'manage-records' => 'Manage Records',
+        'ai-parser' => 'AI Parser Settings',
+        'shortcodes' => 'Shortcode Usage',
+        'maintenance' => 'Database Maintenance'
+    );
+    $page_title = isset($page_titles[$active_tab]) ? $page_titles[$active_tab] : 'Film Watch Database';
     ?>
     <div class="wrap">
-        <h1>Film Watch Database Settings</h1>
+        <h1><?php echo esc_html($page_title); ?></h1>
 
-        <!-- Main Tab Navigation -->
-        <style>
-            .fwd-admin-tabs {
-                border-bottom: 1px solid #ccd0d4;
-                margin: 20px 0 0 0;
-                padding: 0;
-            }
-            .fwd-admin-tabs button {
-                padding: 10px 20px;
-                margin: 0 5px 0 0;
-                background: #f0f0f1;
-                color: #2c3338;
-                border: none;
-                border-bottom: 2px solid transparent;
-                cursor: pointer;
-                font-size: 14px;
-            }
-            .fwd-admin-tabs button.active {
-                background: #fff;
-                color: #0073aa;
-                border-bottom-color: #0073aa;
-            }
-            .fwd-admin-tabs button:hover {
-                background: #fff;
-            }
-            .fwd-admin-tab-content {
-                display: none;
-                padding: 20px 0;
-            }
-            .fwd-admin-tab-content.active {
-                display: block;
-            }
-        </style>
-
-        <div class="fwd-admin-tabs">
-            <button class="fwd-admin-tab-btn active" data-tab="add-entry">Add New Entry</button>
-            <button class="fwd-admin-tab-btn" data-tab="manage-records">Manage Records</button>
-            <button class="fwd-admin-tab-btn" data-tab="ai-parser">AI Parser Settings</button>
-            <button class="fwd-admin-tab-btn" data-tab="shortcodes">Shortcode Usage</button>
-            <button class="fwd-admin-tab-btn" data-tab="maintenance">Database Maintenance</button>
-        </div>
-
-        <!-- Tab 2: AI Parser Settings -->
-        <div class="fwd-admin-tab-content" id="fwd-admin-tab-ai-parser">
+        <?php if ($active_tab === 'ai-parser'): ?>
+        <!-- AI Parser Settings -->
         <!-- AI Parser Settings -->
         <div style="background: #f0f6fc; padding: 20px; border-left: 4px solid #0073aa; margin: 20px 0;">
             <h2 style="margin-top: 0;">🤖 AI-Powered Parser Settings</h2>
@@ -939,10 +1086,9 @@ function fwd_settings_page() {
 
         </div>
         </div>
-        <!-- End Tab 2: AI Parser Settings -->
+        <?php endif; ?>
 
-        <!-- Tab 1: Add New Entry -->
-        <div class="fwd-admin-tab-content active" id="fwd-admin-tab-add-entry">
+        <?php if ($active_tab === 'add-entry'): ?>
         <!-- Add New Entry Section -->
         <div class="fwd-add-container" style="background: #fff; padding: 20px; border: 1px solid #ccd0d4; margin: 20px 0;">
             <h2 style="margin-top: 0;">Add New Entry</h2>
@@ -1049,7 +1195,7 @@ function fwd_settings_page() {
                 ?>
                     <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #f0b849; margin-bottom: 20px;">
                         <strong>TMDB API Key Required</strong><br>
-                        Please configure your TMDB API key in the <a href="#" onclick="jQuery('.fwd-admin-tab-btn[data-tab=ai-parser]').click(); return false;">AI Parser Settings tab</a> to use this feature.
+                        Please configure your TMDB API key in the <a href="<?php echo admin_url('admin.php?page=fwd-ai-parser'); ?>">AI Parser Settings</a> to use this feature.
                     </div>
                 <?php else: ?>
                     <div class="fwd-examples" style="background: #f0f6fc; padding: 15px; border-left: 4px solid #0073aa; margin-bottom: 20px;">
@@ -1347,7 +1493,9 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
         </script>
         </div>
         <!-- End Tab 1: Add New Entry -->
+        <?php endif; ?>
 
+        <?php if ($active_tab === 'manage-records'): ?>
         <!-- Tab 2: Manage Records -->
         <div class="fwd-admin-tab-content" id="fwd-admin-tab-manage-records">
             <h2>Manage Records</h2>
@@ -1751,12 +1899,8 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
                     });
                 });
 
-                // Load initial records when tab is opened
-                $('.fwd-admin-tab-btn[data-tab="manage-records"]').on('click', function() {
-                    if ($('#fwd-records-tbody tr').length === 1 && $('#fwd-records-tbody td').text().includes('Loading records...')) {
-                        loadRecords(1, '');
-                    }
-                });
+                // Load initial records immediately (since this is now its own page)
+                loadRecords(1, '');
 
                 // Initialize WordPress media uploader for edit modal
                 var editMediaUploader;
@@ -1826,7 +1970,9 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
             </script>
         </div>
         <!-- End Tab 2: Manage Records -->
+        <?php endif; ?>
 
+        <?php if ($active_tab === 'shortcodes'): ?>
         <!-- Tab 3: Shortcode Usage -->
         <div class="fwd-admin-tab-content" id="fwd-admin-tab-shortcodes">
         <h2>Shortcode Usage</h2>
@@ -1888,21 +2034,12 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
         </div>
         </div>
         <!-- End Tab 3: Shortcode Usage -->
+        <?php endif; ?>
 
+        <?php if ($active_tab === 'maintenance'): ?>
         <!-- Tab 4: Database Maintenance -->
         <div class="fwd-admin-tab-content" id="fwd-admin-tab-maintenance">
         <h2>Database Maintenance</h2>
-
-        <!-- Global Cleanup Tool -->
-        <div style="background: #fff3cd; padding: 20px; border-left: 4px solid #ffc107; margin: 20px 0;">
-            <h3 style="margin-top: 0;">Clean Escaped Characters</h3>
-            <p>Remove backslashes before quotes from ALL database tables (films, actors, brands, watches, characters, narratives).</p>
-            <p><strong>This is safe to run.</strong> It will clean entries like <code>Tom\'s</code> → <code>Tom's</code> and <code>\"stealth\"</code> → <code>"stealth"</code>.</p>
-            <form method="post" style="margin: 10px 0;">
-                <?php wp_nonce_field('fwd_global_cleanup_action', 'fwd_global_cleanup_nonce'); ?>
-                <button type="submit" name="fwd_global_cleanup" class="button button-primary">Clean All Escaped Data Now</button>
-            </form>
-        </div>
 
         <!-- Rebuild Search Index -->
         <div style="background: #e7f5ff; padding: 20px; border-left: 4px solid #0073aa; margin: 20px 0;">
@@ -1913,70 +2050,6 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
                 <?php wp_nonce_field('fwd_rebuild_index_action', 'fwd_rebuild_index_nonce'); ?>
                 <button type="submit" name="fwd_rebuild_index" class="button button-primary">Rebuild Search Index Now</button>
             </form>
-        </div>
-
-        <!-- Fix Actor/Character Split -->
-        <div style="background: #fff3cd; padding: 20px; border-left: 4px solid #ffc107; margin: 20px 0;">
-            <h3 style="margin-top: 0;">Fix Actor Names with Embedded Characters</h3>
-            <p>Find and fix actor names that contain character names like <code>"Rudolph Valentino as Ahmed Ben Hassan"</code></p>
-            <p><strong>This will:</strong></p>
-            <ul>
-                <li>Split actor names into proper actor + character fields</li>
-                <li>Merge with existing clean actor records if they exist</li>
-                <li>Update all related entries to use correct actor and character IDs</li>
-            </ul>
-            <form method="post" style="margin: 10px 0;">
-                <?php wp_nonce_field('fwd_fix_actor_split_action', 'fwd_fix_actor_split_nonce'); ?>
-                <button type="submit" name="fwd_fix_actor_split" class="button button-primary">Fix Actor/Character Split Now</button>
-            </form>
-        </div>
-
-        <!-- Duplicate Finder -->
-        <div style="background: #e7f5ff; padding: 20px; border-left: 4px solid #0073aa; margin: 20px 0;">
-            <h3 style="margin-top: 0;">Find and Remove Duplicates</h3>
-            <p>Find entries where the same actor playing the same character appears multiple times in the same film.</p>
-
-            <?php
-            $duplicate_groups = fwd_find_duplicates();
-
-            if (empty($duplicate_groups)) {
-                echo '<p style="color: #46b450;"><strong>✓ No duplicates found!</strong></p>';
-            } else {
-                echo '<p style="color: #dc3232;"><strong>Found ' . count($duplicate_groups) . ' duplicate groups:</strong></p>';
-
-                foreach ($duplicate_groups as $group_index => $group) {
-                    echo '<div style="background: #fff; padding: 15px; margin: 15px 0; border: 1px solid #ccd0d4;">';
-                    echo '<h4 style="margin-top: 0;">' . esc_html($group[0]['actor_name']) . ' as ' .
-                         esc_html($group[0]['character_name']) .
-                         ' in ' . esc_html($group[0]['title']) . ' (' . esc_html($group[0]['year']) . ')</h4>';
-
-                    echo '<table class="wp-list-table widefat fixed striped">';
-                    echo '<thead><tr>';
-                    echo '<th>ID</th><th>Watch</th><th>Narrative</th><th>Image</th><th>Source</th><th>Action</th>';
-                    echo '</tr></thead><tbody>';
-
-                    foreach ($group as $entry) {
-                        echo '<tr>';
-                        echo '<td>' . esc_html($entry['faw_id']) . '</td>';
-                        echo '<td><strong>' . esc_html($entry['brand_name']) . ' ' . esc_html($entry['model_reference']) . '</strong></td>';
-                        echo '<td>' . (empty($entry['narrative_role']) ? '<em>none</em>' : esc_html(substr($entry['narrative_role'], 0, 100)) . '...') . '</td>';
-                        echo '<td>' . (empty($entry['image_url']) ? '<em>none</em>' : '✓ Has image') . '</td>';
-                        echo '<td>' . (empty($entry['source_url']) ? '<em>none</em>' : '<a href="' . esc_url($entry['source_url']) . '" target="_blank">link</a>') . '</td>';
-                        echo '<td>';
-                        echo '<form method="post" style="display: inline;">';
-                        wp_nonce_field('fwd_duplicate_action', 'fwd_duplicate_nonce');
-                        echo '<input type="hidden" name="faw_id" value="' . esc_attr($entry['faw_id']) . '">';
-                        echo '<button type="submit" name="fwd_delete_duplicate" class="button button-small" onclick="return confirm(\'Delete entry #' . esc_js($entry['faw_id']) . '?\');">Delete</button>';
-                        echo '</form>';
-                        echo '</td>';
-                        echo '</tr>';
-                    }
-
-                    echo '</tbody></table>';
-                    echo '</div>';
-                }
-            }
-            ?>
         </div>
 
         <!-- Brand Merge Tool -->
@@ -2122,115 +2195,9 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
             ?>
         </div>
 
-        <!-- Duplicate Characters Finder -->
-        <div style="background: #f3e5f5; padding: 20px; border-left: 4px solid #9c27b0; margin: 20px 0;">
-            <h3 style="margin-top: 0;">Find and Merge Duplicate Characters</h3>
-            <p>Find characters with similar or identical names that appear in the same film. Review appearances to confirm they're the same character.</p>
-
-            <?php
-            $duplicate_characters = fwd_find_duplicate_characters();
-
-            if (empty($duplicate_characters)) {
-                echo '<p style="color: #46b450;"><strong>✓ No duplicate characters found!</strong></p>';
-            } else {
-                echo '<p style="color: #dc3232;"><strong>Found ' . count($duplicate_characters) . ' potential duplicate character pairs:</strong></p>';
-
-                foreach ($duplicate_characters as $item) {
-                    $char1 = $item['char1'];
-                    $char1_films = $item['char1_films'];
-                    $char2 = $item['char2'];
-                    $char2_films = $item['char2_films'];
-
-                    echo '<div style="background: #fff; padding: 15px; margin: 15px 0; border: 1px solid #ccd0d4;">';
-
-                    echo '<table class="wp-list-table widefat fixed striped">';
-                    echo '<thead><tr>';
-                    echo '<th style="width: 80px;">ID</th><th>Character Name</th><th>Appears In (Actor / Film / Year)</th><th style="width: 150px;">Action</th>';
-                    echo '</tr></thead><tbody>';
-
-                    // Character 1
-                    echo '<tr>';
-                    echo '<td><strong>' . esc_html($char1->character_id) . '</strong></td>';
-                    echo '<td><strong>' . esc_html($char1->character_name) . '</strong></td>';
-                    echo '<td>';
-                    if (!empty($char1_films)) {
-                        echo '<ul style="margin: 0; padding-left: 20px;">';
-                        foreach ($char1_films as $film) {
-                            echo '<li>' . esc_html($film->actor_name) . ' / ' . esc_html($film->title) . ' (' . esc_html($film->year) . ')</li>';
-                        }
-                        echo '</ul>';
-                    } else {
-                        echo '<em>No films</em>';
-                    }
-                    echo '</td>';
-                    echo '<td>';
-                    if ($char1->usage_count > 0) {
-                        echo '<form method="post" style="display: inline;">';
-                        wp_nonce_field('fwd_character_merge_action', 'fwd_character_merge_nonce');
-                        echo '<input type="hidden" name="wrong_character_id" value="' . esc_attr($char1->character_id) . '">';
-                        echo '<input type="hidden" name="correct_character_id" value="' . esc_attr($char2->character_id) . '">';
-                        echo '<button type="submit" name="fwd_merge_characters" class="button button-small" onclick="return confirm(\'Merge ' . esc_js($char1->usage_count) . ' entries from #' . esc_js($char1->character_id) . ' into #' . esc_js($char2->character_id) . '?\');">Merge into #' . esc_html($char2->character_id) . '</button>';
-                        echo '</form>';
-                    } else {
-                        echo '<em>Unused</em>';
-                    }
-                    echo '</td>';
-                    echo '</tr>';
-
-                    // Character 2
-                    echo '<tr>';
-                    echo '<td><strong>' . esc_html($char2->character_id) . '</strong></td>';
-                    echo '<td><strong>' . esc_html($char2->character_name) . '</strong></td>';
-                    echo '<td>';
-                    if (!empty($char2_films)) {
-                        echo '<ul style="margin: 0; padding-left: 20px;">';
-                        foreach ($char2_films as $film) {
-                            echo '<li>' . esc_html($film->actor_name) . ' / ' . esc_html($film->title) . ' (' . esc_html($film->year) . ')</li>';
-                        }
-                        echo '</ul>';
-                    } else {
-                        echo '<em>No films</em>';
-                    }
-                    echo '</td>';
-                    echo '<td>';
-                    if ($char2->usage_count > 0) {
-                        echo '<form method="post" style="display: inline;">';
-                        wp_nonce_field('fwd_character_merge_action', 'fwd_character_merge_nonce');
-                        echo '<input type="hidden" name="wrong_character_id" value="' . esc_attr($char2->character_id) . '">';
-                        echo '<input type="hidden" name="correct_character_id" value="' . esc_attr($char1->character_id) . '">';
-                        echo '<button type="submit" name="fwd_merge_characters" class="button button-small" onclick="return confirm(\'Merge ' . esc_js($char2->usage_count) . ' entries from #' . esc_js($char2->character_id) . ' into #' . esc_js($char1->character_id) . '?\');">Merge into #' . esc_html($char1->character_id) . '</button>';
-                        echo '</form>';
-                    } else {
-                        echo '<em>Unused</em>';
-                    }
-                    echo '</td>';
-                    echo '</tr>';
-
-                    echo '</tbody></table>';
-                    echo '</div>';
-                }
-            }
-            ?>
-        </div>
         </div>
         <!-- End Tab 4: Database Maintenance -->
-
-        <!-- Tab Switching JavaScript -->
-        <script>
-        jQuery(document).ready(function($) {
-            $('.fwd-admin-tab-btn').on('click', function() {
-                var tab = $(this).data('tab');
-
-                // Update tab buttons
-                $('.fwd-admin-tab-btn').removeClass('active');
-                $(this).addClass('active');
-
-                // Update tab content
-                $('.fwd-admin-tab-content').removeClass('active');
-                $('#fwd-admin-tab-' + tab).addClass('active');
-            });
-        });
-        </script>
+        <?php endif; ?>
 
     </div>
     <?php
