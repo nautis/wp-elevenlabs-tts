@@ -11,16 +11,6 @@ if (!defined('ABSPATH')) {
 
 class FWD_Database {
 
-    // Cache duration constants
-    private const CACHE_DURATION_STATS = HOUR_IN_SECONDS;
-    private const CACHE_DURATION_BRANDS = DAY_IN_SECONDS;
-    private const CACHE_DURATION_SEARCH = HOUR_IN_SECONDS;
-    private const CACHE_DURATION_MOVIES_LIST = DAY_IN_SECONDS;
-
-    // Query limit constants
-    private const MAX_MOVIES_LIST_LIMIT = 2000;
-
-    // Database table properties
     private $table_films;
     private $table_brands;
     private $table_watches;
@@ -30,11 +20,6 @@ class FWD_Database {
 
     /**
      * Constructor
-     *
-     * Initializes table names with WordPress prefix and runs
-     * lightweight migration check (cached to avoid performance impact).
-     * Note: Heavy operations moved to init() method which is only
-     * called during plugin activation.
      */
     public function __construct() {
         global $wpdb;
@@ -47,31 +32,29 @@ class FWD_Database {
         $this->table_characters = $wpdb->prefix . 'fwd_characters';
         $this->table_film_actor_watch = $wpdb->prefix . 'fwd_film_actor_watch';
 
-        // Only run migrations if needed (version-based, lightweight check)
-        $this->maybe_migrate_database();
+        // Only run schema setup if version has changed or tables don't exist
+        $current_version = get_option('fwd_db_version', '0');
+        $target_version = '4.0';
+
+        if (version_compare($current_version, $target_version, '<') || !$this->tables_exist()) {
+            $this->create_tables();
+            $this->migrate_database();
+            $this->add_performance_indexes();
+            $this->seed_brands();
+        }
     }
 
     /**
-     * Initialize database tables and seed data
-     *
-     * Called only during plugin activation. Creates all necessary
-     * tables, runs migrations, and seeds initial brand data.
-     *
-     * @return void
+     * Check if database tables exist
      */
-    public function init() {
-        $this->create_tables();
-        $this->migrate_database();
-        $this->seed_brands();
+    private function tables_exist() {
+        global $wpdb;
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$this->table_films}'");
+        return !empty($table_exists);
     }
 
     /**
      * Create database tables if they don't exist
-     *
-     * Creates all plugin tables with proper charset, indexes, and constraints.
-     * Uses dbDelta for safe table creation/updates. Logs any errors encountered.
-     *
-     * @return void
      */
     private function create_tables() {
         global $wpdb;
@@ -99,6 +82,7 @@ class FWD_Database {
             watch_id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
             brand_id bigint(20) UNSIGNED NOT NULL,
             model_reference varchar(255) NOT NULL,
+            verification_level varchar(50) DEFAULT NULL,
             PRIMARY KEY (watch_id),
             UNIQUE KEY brand_model (brand_id, model_reference),
             KEY brand_id (brand_id)
@@ -125,69 +109,36 @@ class FWD_Database {
             character_id bigint(20) UNSIGNED NOT NULL,
             watch_id bigint(20) UNSIGNED NOT NULL,
             narrative_role text,
-            image_url varchar(2083) DEFAULT NULL,
-            confidence_level text,
-            source_url varchar(2083) DEFAULT NULL,
+            image_url text,
+            source_url text,
             PRIMARY KEY (faw_id),
             UNIQUE KEY unique_entry (film_id, actor_id, character_id, watch_id),
             KEY film_id (film_id),
             KEY actor_id (actor_id),
             KEY character_id (character_id),
-            KEY watch_id (watch_id),
-            KEY duplicate_check (film_id, actor_id, watch_id)
+            KEY watch_id (watch_id)
         ) $charset_collate;";
 
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 
         foreach ($sql as $query) {
-            $result = dbDelta($query);
-            if ($wpdb->last_error) {
-                error_log('FWD Database: Table creation error - ' . $wpdb->last_error);
-            }
+            dbDelta($query);
         }
-    }
-
-    /**
-     * Check if migration is needed and run it
-     *
-     * Uses transient cache to avoid checking on every page load.
-     * Cache expires after 1 hour. Compares current DB version to
-     * determine if migration is needed.
-     *
-     * @return void
-     */
-    private function maybe_migrate_database() {
-        // Check transient cache first (expires in 1 hour)
-        $migration_checked = get_transient('fwd_migration_checked');
-        if ($migration_checked === FWD_VERSION) {
-            return; // Already checked for this version
-        }
-
-        // Check if migration is needed
-        $db_version = get_option('fwd_db_version', '1.0');
-        if (version_compare($db_version, '3.1', '>=')) {
-            // No migration needed, cache this result
-            set_transient('fwd_migration_checked', FWD_VERSION, HOUR_IN_SECONDS);
-            return;
-        }
-
-        // Migration needed, run it
-        $this->migrate_database();
-        set_transient('fwd_migration_checked', FWD_VERSION, HOUR_IN_SECONDS);
     }
 
     /**
      * Migrate database schema for upgrades
-     *
-     * Handles versioned migrations:
-     * - 1.0 → 2.0: Add image_url and source_url columns
-     * - 2.0 → 3.0: Remove deprecated verification_level and source columns
-     * - 3.0 → 3.1: Optimize URL columns (TEXT → VARCHAR) and add composite index
-     *
-     * @return void
+     * Adds new columns to existing databases
      */
     private function migrate_database() {
         global $wpdb;
+
+        // Use transient-based locking to prevent concurrent migrations
+        $lock_key = 'fwd_migration_lock';
+        if (get_transient($lock_key)) {
+            return; // Another process is running migrations
+        }
+        set_transient($lock_key, true, 60); // Lock for 60 seconds max
 
         try {
             $db_version = get_option('fwd_db_version', '1.0');
@@ -220,7 +171,7 @@ class FWD_Database {
                 update_option('fwd_db_version', '2.0');
             }
 
-            // Migration 2.0 -> 3.0: Remove verification_level and source column
+            // Migration 2.0 -> 3.0: Remove verification_level, remove source_url, add confidence_level
             if (version_compare($db_version, '3.0', '<')) {
                 // Check current columns
                 $watch_columns = $wpdb->get_results("SHOW COLUMNS FROM {$this->table_watches}");
@@ -235,53 +186,591 @@ class FWD_Database {
                     }
                 }
 
-                // Remove source column (not source_url) from film_actor_watch table
+                $has_source_url = false;
+                $has_confidence_level = false;
+
                 foreach ($faw_columns as $column) {
-                    if ($column->Field === 'source') {
-                        $wpdb->query("ALTER TABLE {$this->table_film_actor_watch} DROP COLUMN source");
-                        error_log('FWD Database: Removed source column from film_actor_watch');
-                        break;
+                    if ($column->Field === 'source_url') {
+                        $has_source_url = true;
                     }
+                    if ($column->Field === 'confidence_level') {
+                        $has_confidence_level = true;
+                    }
+                }
+
+                // Remove source_url from film_actor_watch table
+                if ($has_source_url) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch} DROP COLUMN source_url");
+                    error_log('FWD Database: Removed source_url column from film_actor_watch');
+                }
+
+                // Add confidence_level to film_actor_watch table
+                if (!$has_confidence_level) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch} ADD COLUMN confidence_level text");
+                    error_log('FWD Database: Added confidence_level column to film_actor_watch');
                 }
 
                 update_option('fwd_db_version', '3.0');
             }
 
-            // Migration 3.0 -> 3.1: Optimize URL columns and add composite index
+            // Migration 3.0 -> 3.1: Add timestamp columns for recently_added shortcode
             if (version_compare($db_version, '3.1', '<')) {
-                // Change TEXT to VARCHAR for URL columns (better performance and indexing)
-                $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
-                              MODIFY COLUMN image_url VARCHAR(2083) DEFAULT NULL");
-                $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
-                              MODIFY COLUMN source_url VARCHAR(2083) DEFAULT NULL");
+                $faw_columns = $wpdb->get_results("SHOW COLUMNS FROM {$this->table_film_actor_watch}");
+                $has_created_at = false;
+                $has_updated_at = false;
 
-                // Add composite index for duplicate detection queries
-                // Check if index already exists
-                $indexes = $wpdb->get_results("SHOW INDEX FROM {$this->table_film_actor_watch} WHERE Key_name = 'duplicate_check'");
-                if (empty($indexes)) {
+                foreach ($faw_columns as $column) {
+                    if ($column->Field === 'created_at') {
+                        $has_created_at = true;
+                    }
+                    if ($column->Field === 'updated_at') {
+                        $has_updated_at = true;
+                    }
+                }
+
+                if (!$has_created_at) {
                     $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
-                                  ADD KEY duplicate_check (film_id, actor_id, watch_id)");
-                    error_log('FWD Database: Added composite index for duplicate checks');
+                        ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+                    error_log('FWD Migration 3.1: Added created_at column');
+                }
+
+                if (!$has_updated_at) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
+                        ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+                    error_log('FWD Migration 3.1: Added updated_at column');
                 }
 
                 update_option('fwd_db_version', '3.1');
-                error_log('FWD Database: Migrated to version 3.1 (optimized URL columns and indexes)');
             }
 
+            // Migration 3.1 -> 3.2: Add foreign key constraints for referential integrity
+            if (version_compare($db_version, '3.2', '<')) {
+                // Check if foreign keys already exist
+                $fks = $wpdb->get_results("
+                    SELECT CONSTRAINT_NAME
+                    FROM information_schema.TABLE_CONSTRAINTS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = '{$this->table_film_actor_watch}'
+                    AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+                ");
+
+                $existing_fks = array();
+                foreach ($fks as $fk) {
+                    $existing_fks[] = $fk->CONSTRAINT_NAME;
+                }
+
+                // Add foreign key constraints only if they don't exist
+                if (!in_array('fk_faw_film', $existing_fks)) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
+                        ADD CONSTRAINT fk_faw_film
+                        FOREIGN KEY (film_id) REFERENCES {$this->table_films}(film_id)
+                        ON DELETE CASCADE");
+                    error_log('FWD Migration 3.2: Added foreign key fk_faw_film');
+                }
+
+                if (!in_array('fk_faw_actor', $existing_fks)) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
+                        ADD CONSTRAINT fk_faw_actor
+                        FOREIGN KEY (actor_id) REFERENCES {$this->table_actors}(actor_id)
+                        ON DELETE CASCADE");
+                    error_log('FWD Migration 3.2: Added foreign key fk_faw_actor');
+                }
+
+                if (!in_array('fk_faw_character', $existing_fks)) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
+                        ADD CONSTRAINT fk_faw_character
+                        FOREIGN KEY (character_id) REFERENCES {$this->table_characters}(character_id)
+                        ON DELETE CASCADE");
+                    error_log('FWD Migration 3.2: Added foreign key fk_faw_character');
+                }
+
+                if (!in_array('fk_faw_watch', $existing_fks)) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
+                        ADD CONSTRAINT fk_faw_watch
+                        FOREIGN KEY (watch_id) REFERENCES {$this->table_watches}(watch_id)
+                        ON DELETE CASCADE");
+                    error_log('FWD Migration 3.2: Added foreign key fk_faw_watch');
+                }
+
+                // Add foreign key for watches -> brands
+                $watch_fks = $wpdb->get_results("
+                    SELECT CONSTRAINT_NAME
+                    FROM information_schema.TABLE_CONSTRAINTS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = '{$this->table_watches}'
+                    AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+                ");
+
+                $watch_existing_fks = array();
+                foreach ($watch_fks as $fk) {
+                    $watch_existing_fks[] = $fk->CONSTRAINT_NAME;
+                }
+
+                if (!in_array('fk_watch_brand', $watch_existing_fks)) {
+                    $wpdb->query("ALTER TABLE {$this->table_watches}
+                        ADD CONSTRAINT fk_watch_brand
+                        FOREIGN KEY (brand_id) REFERENCES {$this->table_brands}(brand_id)
+                        ON DELETE CASCADE");
+                    error_log('FWD Migration 3.2: Added foreign key fk_watch_brand');
+                }
+
+                update_option('fwd_db_version', '3.2');
+            }
+
+            // Migration 3.2 -> 3.3: Remove redundant indexes and add CHECK constraints
+            if (version_compare($db_version, '3.3', '<')) {
+                // Remove redundant indexes from film_actor_watch
+                $faw_indexes = $wpdb->get_results("SHOW INDEX FROM {$this->table_film_actor_watch}");
+                $index_names = array();
+                foreach ($faw_indexes as $idx) {
+                    $index_names[] = $idx->Key_name;
+                }
+
+                // Drop redundant single-column indexes (covered by composite indexes)
+                if (in_array('actor_id', $index_names)) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch} DROP INDEX actor_id");
+                    error_log('FWD Migration 3.3: Dropped redundant actor_id index');
+                }
+
+                if (in_array('film_id', $index_names)) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch} DROP INDEX film_id");
+                    error_log('FWD Migration 3.3: Dropped redundant film_id index');
+                }
+
+                // Add CHECK constraint for year range
+                $wpdb->query("ALTER TABLE {$this->table_films}
+                    ADD CONSTRAINT check_year_range
+                    CHECK (year >= 1900 AND year <= 2100)");
+                error_log('FWD Migration 3.3: Added year range constraint');
+
+                // Add covering index for actor queries
+                if (!in_array('idx_actor_watch_cover', $index_names)) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
+                        ADD INDEX idx_actor_watch_cover (actor_id, watch_id, film_id, created_at)");
+                    error_log('FWD Migration 3.3: Added covering index for actor queries');
+                }
+
+                // Add descending index for recently added queries
+                if (!in_array('idx_created_desc', $index_names)) {
+                    $wpdb->query("CREATE INDEX idx_created_desc ON {$this->table_film_actor_watch} (created_at DESC)");
+                    error_log('FWD Migration 3.3: Added descending created_at index');
+                }
+
+                update_option('fwd_db_version', '3.3');
+            }
+
+            // Migration 3.3 -> 3.4: Add soft delete support
+            if (version_compare($db_version, '3.4', '<')) {
+                // Add deleted_at columns to all tables
+                $tables_to_update = array(
+                    $this->table_films,
+                    $this->table_actors,
+                    $this->table_brands,
+                    $this->table_watches,
+                    $this->table_characters,
+                    $this->table_film_actor_watch
+                );
+
+                foreach ($tables_to_update as $table) {
+                    $columns = $wpdb->get_results("SHOW COLUMNS FROM {$table}");
+                    $has_deleted_at = false;
+
+                    foreach ($columns as $column) {
+                        if ($column->Field === 'deleted_at') {
+                            $has_deleted_at = true;
+                            break;
+                        }
+                    }
+
+                    if (!$has_deleted_at) {
+                        $wpdb->query("ALTER TABLE {$table} ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL");
+                        error_log("FWD Migration 3.4: Added deleted_at to {$table}");
+                    }
+                }
+
+                // Add index on deleted_at for filtering
+                $wpdb->query("CREATE INDEX idx_deleted_at ON {$this->table_film_actor_watch} (deleted_at)");
+                error_log('FWD Migration 3.4: Added deleted_at index');
+
+                update_option('fwd_db_version', '3.4');
+            }
+
+            // Migration 3.4 -> 3.5: Add audit columns
+            if (version_compare($db_version, '3.5', '<')) {
+                $columns = $wpdb->get_results("SHOW COLUMNS FROM {$this->table_film_actor_watch}");
+                $has_created_by = false;
+                $has_updated_by = false;
+
+                foreach ($columns as $column) {
+                    if ($column->Field === 'created_by') $has_created_by = true;
+                    if ($column->Field === 'updated_by') $has_updated_by = true;
+                }
+
+                if (!$has_created_by) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
+                        ADD COLUMN created_by bigint(20) UNSIGNED NULL DEFAULT NULL");
+                    error_log('FWD Migration 3.5: Added created_by column');
+                }
+
+                if (!$has_updated_by) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
+                        ADD COLUMN updated_by bigint(20) UNSIGNED NULL DEFAULT NULL");
+                    error_log('FWD Migration 3.5: Added updated_by column');
+                }
+
+                update_option('fwd_db_version', '3.5');
+            }
+
+            // Migration 3.5 -> 3.6: Create audit history table
+            if (version_compare($db_version, '3.6', '<')) {
+                $audit_table = $wpdb->prefix . 'fwd_audit_log';
+
+                $wpdb->query("CREATE TABLE IF NOT EXISTS {$audit_table} (
+                    log_id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    table_name varchar(50) NOT NULL,
+                    record_id bigint(20) UNSIGNED NOT NULL,
+                    action enum('INSERT', 'UPDATE', 'DELETE') NOT NULL,
+                    old_values JSON,
+                    new_values JSON,
+                    user_id bigint(20) UNSIGNED,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (log_id),
+                    INDEX idx_table_record (table_name, record_id),
+                    INDEX idx_created (created_at),
+                    INDEX idx_user (user_id)
+                ) {$wpdb->get_charset_collate()}");
+
+                error_log('FWD Migration 3.6: Created audit log table');
+                update_option('fwd_db_version', '3.6');
+            }
+
+            // Migration 3.6 -> 3.7: Create denormalized search index with FULLTEXT
+            if (version_compare($db_version, '3.7', '<')) {
+                $search_table = $wpdb->prefix . 'fwd_search_index';
+
+                $wpdb->query("CREATE TABLE IF NOT EXISTS {$search_table} (
+                    index_id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    faw_id bigint(20) UNSIGNED NOT NULL,
+                    film_title varchar(255) NOT NULL,
+                    film_year int(4) NOT NULL,
+                    actor_name varchar(255) NOT NULL,
+                    brand_name varchar(100) NOT NULL,
+                    model_reference varchar(255) NOT NULL,
+                    character_name varchar(255) NOT NULL,
+                    narrative_role text,
+                    image_url text,
+                    source_url text,
+                    confidence_level text,
+                    search_text text NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    deleted_at TIMESTAMP NULL DEFAULT NULL,
+                    PRIMARY KEY (index_id),
+                    UNIQUE KEY unique_faw (faw_id),
+                    FULLTEXT KEY ft_search (search_text),
+                    INDEX idx_film (film_title),
+                    INDEX idx_actor (actor_name),
+                    INDEX idx_brand (brand_name),
+                    INDEX idx_created (created_at DESC),
+                    INDEX idx_deleted (deleted_at)
+                ) {$wpdb->get_charset_collate()}");
+
+                error_log('FWD Migration 3.7: Created search index table with FULLTEXT');
+
+                // Populate search index from existing data
+                $faw_table = $wpdb->prefix . 'fwd_film_actor_watch';
+
+                $count = $wpdb->query("
+                    INSERT INTO {$search_table}
+                        (faw_id, film_title, film_year, actor_name, brand_name,
+                         model_reference, character_name, narrative_role,
+                         image_url, source_url, confidence_level, search_text,
+                         created_at, deleted_at)
+                    SELECT
+                        faw.faw_id,
+                        f.title,
+                        f.year,
+                        a.actor_name,
+                        b.brand_name,
+                        w.model_reference,
+                        c.character_name,
+                        faw.narrative_role,
+                        faw.image_url,
+                        faw.source_url,
+                        faw.confidence_level,
+                        CONCAT_WS(' ',
+                            f.title,
+                            f.year,
+                            a.actor_name,
+                            b.brand_name,
+                            w.model_reference,
+                            c.character_name,
+                            faw.narrative_role
+                        ),
+                        faw.created_at,
+                        faw.deleted_at
+                    FROM {$faw_table} faw
+                    JOIN {$this->table_films} f ON faw.film_id = f.film_id
+                    JOIN {$this->table_actors} a ON faw.actor_id = a.actor_id
+                    JOIN {$this->table_characters} c ON faw.character_id = c.character_id
+                    JOIN {$this->table_watches} w ON faw.watch_id = w.watch_id
+                    JOIN {$this->table_brands} b ON w.brand_id = b.brand_id
+                ");
+
+                error_log("FWD Migration 3.7: Populated search index with {$count} entries");
+                update_option('fwd_db_version', '3.7');
+            }
+
+
+            // Migration 3.7 -> 3.8: Add gallery_ids column for multiple images
+            if (version_compare($db_version, '3.8', '<')) {
+                $columns = $wpdb->get_results("SHOW COLUMNS FROM {$this->table_film_actor_watch}");
+                $has_gallery_ids = false;
+
+                foreach ($columns as $column) {
+                    if ($column->Field === 'gallery_ids') {
+                        $has_gallery_ids = true;
+                        break;
+                    }
+                }
+
+                if (!$has_gallery_ids) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
+                        ADD COLUMN gallery_ids TEXT NULL AFTER image_url");
+                    error_log('FWD Migration 3.8: Added gallery_ids column');
+                }
+
+                // Migrate existing image_url to gallery_ids
+                // Get entries with image_url but no gallery_ids
+                $entries = $wpdb->get_results("
+                    SELECT faw_id, image_url
+                    FROM {$this->table_film_actor_watch}
+                    WHERE image_url IS NOT NULL
+                    AND image_url != ''
+                    AND (gallery_ids IS NULL OR gallery_ids = '')
+                ");
+
+                $migrated = 0;
+                foreach ($entries as $entry) {
+                    // Use WordPress's built-in function to find attachment ID
+                    $attachment_id = attachment_url_to_postid($entry->image_url);
+
+                    if ($attachment_id) {
+                        // Create JSON array with single attachment ID
+                        $gallery_json = json_encode([$attachment_id]);
+
+                        $wpdb->update(
+                            $this->table_film_actor_watch,
+                            ['gallery_ids' => $gallery_json],
+                            ['faw_id' => $entry->faw_id],
+                            ['%s'],
+                            ['%d']
+                        );
+                        $migrated++;
+                    }
+                }
+
+                error_log("FWD Migration 3.8: Migrated {$migrated} image URLs to gallery_ids");
+                update_option('fwd_db_version', '3.8');
+            }
+
+            // Migration 3.8 -> 3.9: Add gallery_ids to search index table
+            if (version_compare($db_version, '3.9', '<')) {
+                $search_table = $wpdb->prefix . 'fwd_search_index';
+                $columns = $wpdb->get_results("SHOW COLUMNS FROM {$search_table}");
+                $has_gallery_ids = false;
+
+                foreach ($columns as $column) {
+                    if ($column->Field === 'gallery_ids') {
+                        $has_gallery_ids = true;
+                        break;
+                    }
+                }
+
+                if (!$has_gallery_ids) {
+                    $wpdb->query("ALTER TABLE {$search_table}
+                        ADD COLUMN gallery_ids TEXT NULL AFTER image_url");
+                    error_log('FWD Migration 3.9: Added gallery_ids column to search index');
+
+                    // Rebuild search index to populate gallery_ids
+                    $wpdb->query("TRUNCATE TABLE {$search_table}");
+
+                    $count = $wpdb->query("
+                        INSERT INTO {$search_table}
+                            (faw_id, film_title, film_year, actor_name, brand_name,
+                             model_reference, character_name, narrative_role,
+                             image_url, gallery_ids, source_url, confidence_level, search_text,
+                             created_at, deleted_at)
+                        SELECT
+                            faw.faw_id,
+                            f.title,
+                            f.year,
+                            a.actor_name,
+                            b.brand_name,
+                            w.model_reference,
+                            c.character_name,
+                            faw.narrative_role,
+                            faw.image_url,
+                            faw.gallery_ids,
+                            faw.source_url,
+                            faw.confidence_level,
+                            CONCAT_WS(' ',
+                                f.title,
+                                f.year,
+                                a.actor_name,
+                                b.brand_name,
+                                w.model_reference,
+                                c.character_name,
+                                faw.narrative_role
+                            ),
+                            faw.created_at,
+                            faw.deleted_at
+                        FROM {$this->table_film_actor_watch} faw
+                        JOIN {$this->table_films} f ON faw.film_id = f.film_id
+                        JOIN {$this->table_actors} a ON faw.actor_id = a.actor_id
+                        JOIN {$this->table_characters} c ON faw.character_id = c.character_id
+                        JOIN {$this->table_watches} w ON faw.watch_id = w.watch_id
+                        JOIN {$this->table_brands} b ON w.brand_id = b.brand_id
+                    ");
+
+                    error_log("FWD Migration 3.9: Rebuilt search index with gallery_ids ({$count} entries)");
+                }
+
+                update_option('fwd_db_version', '3.9');
+            }
+
+            // Migration 3.9 -> 4.0: Add regallery_id column for RegGallery integration
+            if (version_compare($db_version, '4.0', '<')) {
+                $columns = $wpdb->get_results("SHOW COLUMNS FROM {$this->table_film_actor_watch}");
+                $has_regallery_id = false;
+
+                foreach ($columns as $column) {
+                    if ($column->Field === 'regallery_id') {
+                        $has_regallery_id = true;
+                        break;
+                    }
+                }
+
+                if (!$has_regallery_id) {
+                    $wpdb->query("ALTER TABLE {$this->table_film_actor_watch}
+                        ADD COLUMN regallery_id BIGINT(20) UNSIGNED NULL AFTER gallery_ids");
+                    error_log('FWD Migration 4.0: Added regallery_id column');
+                }
+
+                // Also add to search index table
+                $search_table = $wpdb->prefix . 'fwd_search_index';
+                $search_columns = $wpdb->get_results("SHOW COLUMNS FROM {$search_table}");
+                $search_has_regallery_id = false;
+
+                foreach ($search_columns as $column) {
+                    if ($column->Field === 'regallery_id') {
+                        $search_has_regallery_id = true;
+                        break;
+                    }
+                }
+
+                if (!$search_has_regallery_id) {
+                    $wpdb->query("ALTER TABLE {$search_table}
+                        ADD COLUMN regallery_id BIGINT(20) UNSIGNED NULL AFTER gallery_ids");
+                    error_log('FWD Migration 4.0: Added regallery_id column to search index');
+                }
+
+                update_option('fwd_db_version', '4.0');
+            }
+            // Release lock
+            delete_transient($lock_key);
         } catch (Exception $e) {
+            delete_transient($lock_key);
             error_log('FWD Database Migration Error: ' . $e->getMessage());
         }
     }
 
     /**
+     * Add performance indexes for frequently queried columns
+     * Only runs once per index - checks if index exists before adding
+     */
+    private function add_performance_indexes() {
+        global $wpdb;
+
+        // Check if indexes have already been added
+        if (get_option('fwd_performance_indexes_added', false)) {
+            return;
+        }
+
+        try {
+            // Get existing indexes
+            $existing_indexes = array();
+
+            // Check actors table indexes
+            $actor_indexes = $wpdb->get_results("SHOW INDEX FROM {$this->table_actors}");
+            foreach ($actor_indexes as $idx) {
+                $existing_indexes[$this->table_actors][] = $idx->Key_name;
+            }
+
+            // Check brands table indexes
+            $brand_indexes = $wpdb->get_results("SHOW INDEX FROM {$this->table_brands}");
+            foreach ($brand_indexes as $idx) {
+                $existing_indexes[$this->table_brands][] = $idx->Key_name;
+            }
+
+            // Check films table indexes
+            $film_indexes = $wpdb->get_results("SHOW INDEX FROM {$this->table_films}");
+            foreach ($film_indexes as $idx) {
+                $existing_indexes[$this->table_films][] = $idx->Key_name;
+            }
+
+            // Check film_actor_watch table indexes
+            $faw_indexes = $wpdb->get_results("SHOW INDEX FROM {$this->table_film_actor_watch}");
+            foreach ($faw_indexes as $idx) {
+                $existing_indexes[$this->table_film_actor_watch][] = $idx->Key_name;
+            }
+
+            // Add actor_name index for LIKE searches
+            if (!isset($existing_indexes[$this->table_actors]) || !in_array('idx_actor_name', $existing_indexes[$this->table_actors])) {
+                $wpdb->query("ALTER TABLE {$this->table_actors} ADD INDEX idx_actor_name (actor_name(50))");
+                error_log('FWD: Added index idx_actor_name to actors table');
+            }
+
+            // Add brand_name index for LIKE searches
+            if (!isset($existing_indexes[$this->table_brands]) || !in_array('idx_brand_name', $existing_indexes[$this->table_brands])) {
+                $wpdb->query("ALTER TABLE {$this->table_brands} ADD INDEX idx_brand_name (brand_name(50))");
+                error_log('FWD: Added index idx_brand_name to brands table');
+            }
+
+            // Add title index for LIKE searches
+            if (!isset($existing_indexes[$this->table_films]) || !in_array('idx_title', $existing_indexes[$this->table_films])) {
+                $wpdb->query("ALTER TABLE {$this->table_films} ADD INDEX idx_title (title(100))");
+                error_log('FWD: Added index idx_title to films table');
+            }
+
+            // Add year index for range queries
+            if (!isset($existing_indexes[$this->table_films]) || !in_array('idx_year', $existing_indexes[$this->table_films])) {
+                $wpdb->query("ALTER TABLE {$this->table_films} ADD INDEX idx_year (year)");
+                error_log('FWD: Added index idx_year to films table');
+            }
+
+            // Add composite indexes for JOIN performance
+            if (!isset($existing_indexes[$this->table_film_actor_watch]) || !in_array('idx_film_actor', $existing_indexes[$this->table_film_actor_watch])) {
+                $wpdb->query("ALTER TABLE {$this->table_film_actor_watch} ADD INDEX idx_film_actor (film_id, actor_id)");
+                error_log('FWD: Added composite index idx_film_actor');
+            }
+
+            if (!isset($existing_indexes[$this->table_film_actor_watch]) || !in_array('idx_film_watch', $existing_indexes[$this->table_film_actor_watch])) {
+                $wpdb->query("ALTER TABLE {$this->table_film_actor_watch} ADD INDEX idx_film_watch (film_id, watch_id)");
+                error_log('FWD: Added composite index idx_film_watch');
+            }
+
+            // Mark as completed
+            update_option('fwd_performance_indexes_added', true);
+            error_log('FWD: Performance indexes added successfully');
+
+        } catch (Exception $e) {
+            error_log('FWD Performance Index Error: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Seed database with watch brands from file
-     *
-     * Reads watch-brands.txt and imports brands into database.
-     * Only runs once - uses a WordPress option to track seeding status.
-     * Converts HTML entities and deduplicates brands before insertion.
-     * Sorts brands by length (longest first) for optimal parser matching.
-     *
-     * @return void
+     * Only runs once - uses a WordPress option to track seeding status
      */
     private function seed_brands() {
         global $wpdb;
@@ -299,14 +788,8 @@ class FWD_Database {
         }
 
         try {
-            // Read brands from file with error handling
-            $brands_raw = @file($brands_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-
-            if ($brands_raw === false) {
-                $error = error_get_last();
-                error_log('FWD: Failed to read watch-brands.txt - ' . ($error['message'] ?? 'Unknown error'));
-                return;
-            }
+            // Read brands from file
+            $brands_raw = file($brands_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
             // Clean and deduplicate
             $brands = array();
@@ -352,16 +835,28 @@ class FWD_Database {
     }
 
     /**
+     * Get brands list with caching
+     * @return array List of brand names sorted by length (longest first)
+     */
+    private function get_brands_cached() {
+        static $brands = null;
+
+        if ($brands === null) {
+            // Try to get from WordPress transient cache (expires in 1 hour)
+            $brands = get_transient('fwd_brands_list');
+
+            if ($brands === false) {
+                global $wpdb;
+                $brands = $wpdb->get_col("SELECT brand_name FROM {$this->table_brands} ORDER BY LENGTH(brand_name) DESC");
+                set_transient('fwd_brands_list', $brands, HOUR_IN_SECONDS);
+            }
+        }
+
+        return $brands;
+    }
+
+    /**
      * Parse natural language entry into structured data
-     *
-     * Supports multiple patterns:
-     * - "Actor wears Brand Model in Year Film"
-     * - "Actor wears Brand Model in Film (Year)"
-     * - "In Film (Year), Actor as Character wears Brand Model"
-     *
-     * @param string $text Natural language entry to parse
-     * @return array Parsed entry with keys: actor, character, brand, model, title, year, narrative, image_url
-     * @throws Exception If entry cannot be parsed
      */
     public function parse_entry($text) {
         // Remove trailing periods but preserve them in abbreviations
@@ -402,21 +897,8 @@ class FWD_Database {
             throw new Exception("Could not parse entry");
         }
 
-        // Check if actor field contains "as" or "plays" and extract character
-        if (!$character && preg_match('/^(.+?)\s+(?:as|plays)\s+(.+)$/i', $actor, $actor_match)) {
-            $actor = trim($actor_match[1]);
-            $character = trim($actor_match[2]);
-        }
-
-        // Get brands from database (sorted by length DESC for proper matching)
-        // Use transient cache to avoid repeated queries
-        global $wpdb;
-        $brands = get_transient('fwd_brands_list');
-        if (false === $brands) {
-            $brands = $wpdb->get_col("SELECT brand_name FROM {$this->table_brands} ORDER BY LENGTH(brand_name) DESC");
-            // Cache for 24 hours (brands don't change often)
-            set_transient('fwd_brands_list', $brands, self::CACHE_DURATION_BRANDS);
-        }
+        // Get brands from cache (sorted by length DESC for proper matching)
+        $brands = $this->get_brands_cached();
 
         $brand = null;
         $model = $watch_full;
@@ -473,106 +955,91 @@ class FWD_Database {
             'model' => $model,
             'title' => $title,
             'year' => $year,
+            'verification' => 'Confirmed',
             'narrative' => 'Watch worn in film.',
-            'image_url' => ''
+            'image_url' => '',
+            'source' => ''
         );
     }
 
     /**
+     * Get attachment ID from image URL
+     * @param string $image_url Image URL
+     * @return int|false Attachment ID or false if not found
+     */
+    private function get_attachment_id_from_url($image_url) {
+        global $wpdb;
+
+        if (empty($image_url)) {
+            return false;
+        }
+
+        // Try standard WordPress function first
+        $attachment_id = attachment_url_to_postid($image_url);
+        if ($attachment_id) {
+            return $attachment_id;
+        }
+
+        // Try without -scaled suffix
+        $clean_url = preg_replace('/-scaled(\.[^.]+)$/', '$1', $image_url);
+        $attachment_id = attachment_url_to_postid($clean_url);
+        if ($attachment_id) {
+            return $attachment_id;
+        }
+
+        // Try searching by filename in post_title
+        $filename = basename($image_url);
+        $filename = preg_replace('/-scaled(\.[^.]+)$/', '$1', $filename);
+        $filename = preg_replace('/\.[^.]+$/', '', $filename); // Remove extension
+
+        $attachment_id = $wpdb->get_var($wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_title LIKE %s LIMIT 1",
+            '%' . $wpdb->esc_like($filename) . '%'
+        ));
+
+        return $attachment_id ? (int)$attachment_id : false;
+    }
+
+    /**
      * Insert entry into database
-     *
-     * Inserts all related entities (film, actor, brand, watch, character) and
-     * creates the relationship in film_actor_watch table. Uses transactions
-     * for data integrity. Detects duplicates and can either throw error or
-     * update existing record based on $force_overwrite parameter.
-     *
-     * @param array $data Entry data with keys: actor, character, brand, model, title, year, narrative, image_url, confidence_level, source_url
+     * @param array $data Entry data to insert
      * @param bool $force_overwrite If true, update existing duplicate instead of throwing error
-     * @return bool True on success
-     * @throws Exception On duplicate entry (message contains "DUPLICATE:" prefix with JSON data) or database error
      */
     public function insert_entry($data, $force_overwrite = false) {
         global $wpdb;
 
         try {
+            // Start transaction
             $wpdb->query('START TRANSACTION');
 
+            // Insert or get existing entities first
             // Insert film
             $wpdb->query($wpdb->prepare(
                 "INSERT IGNORE INTO {$this->table_films} (title, year) VALUES (%s, %d)",
                 $data['title'], $data['year']
             ));
 
-            if ($wpdb->last_error) {
-                error_log('FWD Database: Film insert error - ' . $wpdb->last_error);
-            }
-
-            // Insert brand
-            $result = $wpdb->query($wpdb->prepare(
-                "INSERT IGNORE INTO {$this->table_brands} (brand_name) VALUES (%s)",
-                $data['brand']
-            ));
-
-            if ($wpdb->last_error) {
-                error_log('FWD Database: Brand insert error - ' . $wpdb->last_error);
-            }
-
-            // If a new brand was inserted, invalidate the brands cache
-            if ($result) {
-                delete_transient('fwd_brands_list');
-            }
-
-            // Get brand_id
-            $brand_id = $wpdb->get_var($wpdb->prepare(
-                "SELECT brand_id FROM {$this->table_brands} WHERE brand_name = %s",
-                $data['brand']
-            ));
-
-            if (!$brand_id) {
-                $wpdb->query('ROLLBACK');
-                throw new Exception("Failed to retrieve brand_id for brand: {$data['brand']}");
-            }
-
-            // Insert watch
-            $wpdb->query($wpdb->prepare(
-                "INSERT IGNORE INTO {$this->table_watches} (brand_id, model_reference) VALUES (%d, %s)",
-                $brand_id, $data['model']
-            ));
-
-            if ($wpdb->last_error) {
-                error_log('FWD Database: Watch insert error - ' . $wpdb->last_error);
-            }
-
-            // Insert actor
-            $wpdb->query($wpdb->prepare(
-                "INSERT IGNORE INTO {$this->table_actors} (actor_name) VALUES (%s)",
-                $data['actor']
-            ));
-
-            if ($wpdb->last_error) {
-                error_log('FWD Database: Actor insert error - ' . $wpdb->last_error);
-            }
-
-            // Get IDs
             $film_id = $wpdb->get_var($wpdb->prepare(
                 "SELECT film_id FROM {$this->table_films} WHERE title = %s AND year = %d",
                 $data['title'], $data['year']
             ));
 
-            if (!$film_id) {
-                $wpdb->query('ROLLBACK');
-                throw new Exception("Failed to retrieve film_id for: {$data['title']} ({$data['year']})");
-            }
-
-            $actor_id = $wpdb->get_var($wpdb->prepare(
-                "SELECT actor_id FROM {$this->table_actors} WHERE actor_name = %s",
-                $data['actor']
+            // Insert brand
+            $wpdb->query($wpdb->prepare(
+                "INSERT IGNORE INTO {$this->table_brands} (brand_name) VALUES (%s)",
+                $data['brand']
             ));
 
-            if (!$actor_id) {
-                $wpdb->query('ROLLBACK');
-                throw new Exception("Failed to retrieve actor_id for actor: {$data['actor']}");
-            }
+            $brand_id = $wpdb->get_var($wpdb->prepare(
+                "SELECT brand_id FROM {$this->table_brands} WHERE brand_name = %s",
+                $data['brand']
+            ));
+
+            // Insert watch (verification_level removed in v3.0)
+            $wpdb->query($wpdb->prepare(
+                "INSERT IGNORE INTO {$this->table_watches} (brand_id, model_reference) VALUES (%d, %s)",
+                $brand_id, $data['model']
+            ));
 
             $watch_id = $wpdb->get_var($wpdb->prepare(
                 "SELECT w.watch_id FROM {$this->table_watches} w
@@ -581,14 +1048,21 @@ class FWD_Database {
                 $data['brand'], $data['model']
             ));
 
-            if (!$watch_id) {
-                $wpdb->query('ROLLBACK');
-                throw new Exception("Failed to retrieve watch_id for: {$data['brand']} {$data['model']}");
-            }
+            // Insert actor
+            $wpdb->query($wpdb->prepare(
+                "INSERT IGNORE INTO {$this->table_actors} (actor_name) VALUES (%s)",
+                $data['actor']
+            ));
 
-            // Check for duplicates
+            $actor_id = $wpdb->get_var($wpdb->prepare(
+                "SELECT actor_id FROM {$this->table_actors} WHERE actor_name = %s",
+                $data['actor']
+            ));
+
+            // Check for duplicate BEFORE doing character operations
+            // This saves unnecessary work if duplicate exists
             $existing_record = $wpdb->get_row($wpdb->prepare(
-                "SELECT faw.*, c.character_name, faw.narrative_role, faw.image_url, faw.confidence_level, faw.source_url
+                "SELECT faw.*, c.character_name, faw.narrative_role, faw.image_url, faw.confidence_level
                  FROM {$this->table_film_actor_watch} faw
                  JOIN {$this->table_characters} c ON faw.character_id = c.character_id
                  WHERE faw.film_id = %d AND faw.actor_id = %d AND faw.watch_id = %d",
@@ -609,20 +1083,75 @@ class FWD_Database {
                         $character_id = $wpdb->insert_id;
                     }
 
+                    // Prepare update data
+                    $update_data = array(
+                        'character_id' => $character_id,
+                        'narrative_role' => $data['narrative'],
+                        'image_url' => isset($data['image_url']) ? $data['image_url'] : '',
+                        'source_url' => isset($data['source_url']) ? $data['source_url'] : '',
+                        'confidence_level' => isset($data['confidence_level']) ? $data['confidence_level'] : ''
+                    );
+
+                    // Handle gallery_ids if provided
+                    if (isset($data['gallery_ids']) && !empty($data['gallery_ids'])) {
+                        $update_data['gallery_ids'] = $data['gallery_ids'];
+                    }
+                    // Auto-create gallery_ids from image_url if not provided
+                    elseif (isset($data['image_url']) && !empty($data['image_url'])) {
+                        $attachment_id = $this->get_attachment_id_from_url($data['image_url']);
+                        if ($attachment_id) {
+                            $update_data['gallery_ids'] = json_encode(array($attachment_id));
+                        }
+                    }
+
                     // Update the existing relationship
                     $wpdb->update(
                         $this->table_film_actor_watch,
-                        array(
-                            'character_id' => $character_id,
-                            'narrative_role' => $data['narrative'],
-                            'image_url' => isset($data['image_url']) ? $data['image_url'] : '',
-                            'confidence_level' => isset($data['confidence_level']) ? $data['confidence_level'] : '',
-                            'source_url' => isset($data['source_url']) ? $data['source_url'] : ''
-                        ),
+                        $update_data,
                         array('faw_id' => $existing_record['faw_id'])
                     );
 
+                    // Create or update RegGallery post if gallery_ids is available
+                    $gallery_ids_to_use = isset($update_data['gallery_ids']) ? $update_data['gallery_ids'] : null;
+                    if ($gallery_ids_to_use) {
+                        $gallery_ids_array = json_decode($gallery_ids_to_use, true);
+                        if (is_array($gallery_ids_array) && !empty($gallery_ids_array) && function_exists('fwd_create_regallery_post')) {
+                            $existing_regallery_id = isset($existing_record['regallery_id']) ? $existing_record['regallery_id'] : null;
+                            $regallery_id = fwd_create_regallery_post($gallery_ids_array, $data, $existing_regallery_id);
+                            if ($regallery_id) {
+                                $wpdb->update(
+                                    $this->table_film_actor_watch,
+                                    array('regallery_id' => $regallery_id),
+                                    array('faw_id' => $existing_record['faw_id'])
+                                );
+
+                                // Set correct gallery options (justified with captions)
+                                $correct_options = json_encode(array(
+                                    'title' => 'Default',
+                                    'template_id' => 0,
+                                    'templateType' => '',
+                                    'css' => '',
+                                    'custom_css' => '',
+                                    'type' => 'justified',
+                                    'justified' => array(
+                                        'showCaption' => true,
+                                        'captionSource' => 'caption',
+                                        'captionVisibility' => 'alwaysShown',
+                                        'captionPosition' => 'bottom'
+                                    )
+                                ));
+                                update_option('reacg_options' . $regallery_id, $correct_options, false);
+                            }
+                        }
+                    }
+
                     $wpdb->query('COMMIT');
+
+                    // Update search index
+                    if (function_exists('fwd_search')) {
+                        fwd_search()->update_entry($existing_record['faw_id']);
+                    }
+
                     return true;
                 } else {
                     // Return duplicate information in exception
@@ -636,12 +1165,14 @@ class FWD_Database {
                         'year' => $data['year'],
                         'narrative' => $existing_record['narrative_role'],
                         'image_url' => $existing_record['image_url'],
-                        'confidence_level' => $existing_record['confidence_level'],
-                        'source' => $existing_record['source_url']
+                        'confidence_level' => isset($existing_record['confidence_level']) ? $existing_record['confidence_level'] : ''
                     );
                     throw new Exception("DUPLICATE:" . json_encode($duplicate_info));
                 }
             }
+
+            // Clear brands cache since we may have added a new brand
+            delete_transient('fwd_brands_list');
 
             // Check if character exists
             $character_id = $wpdb->get_var($wpdb->prepare(
@@ -654,125 +1185,143 @@ class FWD_Database {
                 $character_id = $wpdb->insert_id;
             }
 
-            // Insert relationship
-            $wpdb->insert($this->table_film_actor_watch, array(
+            // Get current user ID for audit trail
+            $user_id = get_current_user_id();
+
+            // Prepare insert data
+            $insert_data = array(
                 'film_id' => $film_id,
                 'actor_id' => $actor_id,
                 'character_id' => $character_id,
                 'watch_id' => $watch_id,
                 'narrative_role' => $data['narrative'],
                 'image_url' => isset($data['image_url']) ? $data['image_url'] : '',
+                'source_url' => isset($data['source_url']) ? $data['source_url'] : '',
                 'confidence_level' => isset($data['confidence_level']) ? $data['confidence_level'] : '',
-                'source_url' => isset($data['source_url']) ? $data['source_url'] : ''
-            ));
+                'created_by' => $user_id ? $user_id : null
+            );
+
+            // Handle gallery_ids if provided
+            if (isset($data['gallery_ids']) && !empty($data['gallery_ids'])) {
+                $insert_data['gallery_ids'] = $data['gallery_ids'];
+            }
+            // Auto-create gallery_ids from image_url if not provided
+            elseif (isset($data['image_url']) && !empty($data['image_url'])) {
+                $attachment_id = $this->get_attachment_id_from_url($data['image_url']);
+                if ($attachment_id) {
+                    $insert_data['gallery_ids'] = json_encode(array($attachment_id));
+                }
+            }
+
+            // Insert relationship
+            $wpdb->insert($this->table_film_actor_watch, $insert_data);
+
+            $faw_id = $wpdb->insert_id;
+
+            // Create RegGallery post if gallery_ids is available
+            $regallery_id = null;
+            $gallery_ids_to_use = isset($insert_data['gallery_ids']) ? $insert_data['gallery_ids'] : null;
+            if ($gallery_ids_to_use) {
+                $gallery_ids_array = json_decode($gallery_ids_to_use, true);
+                if (is_array($gallery_ids_array) && !empty($gallery_ids_array) && function_exists('fwd_create_regallery_post')) {
+                    $regallery_id = fwd_create_regallery_post($gallery_ids_array, $data);
+                    if ($regallery_id) {
+                        $wpdb->update(
+                            $this->table_film_actor_watch,
+                            array('regallery_id' => $regallery_id),
+                            array('faw_id' => $faw_id)
+                        );
+
+                        // Set correct gallery options (justified with captions)
+                        $correct_options = json_encode(array(
+                            'title' => 'Default',
+                            'template_id' => 0,
+                            'templateType' => '',
+                            'css' => '',
+                            'custom_css' => '',
+                            'type' => 'justified',
+                            'justified' => array(
+                                'showCaption' => true,
+                                'captionSource' => 'caption',
+                                'captionVisibility' => 'alwaysShown',
+                                'captionPosition' => 'bottom'
+                            )
+                        ));
+                        update_option('reacg_options' . $regallery_id, $correct_options, false);
+                    }
+                }
+            }
 
             $wpdb->query('COMMIT');
 
-            // Invalidate caches after successful insert
-            $this->invalidate_caches();
+            // Add to search index
+            if (function_exists('fwd_search')) {
+                fwd_search()->index_entry($faw_id);
+            }
 
             return true;
 
         } catch (Exception $e) {
-            $rollback_result = $wpdb->query('ROLLBACK');
-            if ($rollback_result === false) {
-                error_log('FWD Database: ROLLBACK failed - ' . $wpdb->last_error);
-            }
+            $wpdb->query('ROLLBACK');
             throw $e;
         }
     }
 
     /**
-     * Unified query function for all search types
-     * Reduces code duplication across query_actor, query_brand, query_film
+     * Query watches by actor
      *
-     * @param string $search_term The term to search for
-     * @param string $search_type Type: 'actor', 'brand', or 'film'
-     * @return array Result array with success, count, and data
+     * Uses fast FULLTEXT search service if available, falls back to JOIN-based search otherwise.
      */
-    private function query_unified($search_term, $search_type) {
-        // Try to get cached search results
-        $cache_key = 'fwd_search_' . $search_type . '_' . md5($search_term);
-        $cached_result = get_transient($cache_key);
+    public function query_actor($actor_name) {
+        // Use fast search service if available
+        if (function_exists('fwd_search')) {
+            $search_results = fwd_search()->search($actor_name, false);
 
-        if ($cached_result !== false) {
-            return $cached_result;
+            if ($search_results['success'] && isset($search_results['actors'])) {
+                // actors is associative array: actor_name => array(watches)
+                foreach ($search_results['actors'] as $actor => $films) {
+                    // Return the first actor match
+                    if (stripos($actor, $actor_name) !== false) {
+                        return array(
+                            'success' => true,
+                            'actor' => $actor,
+                            'count' => count($films),
+                            'films' => $films
+                        );
+                    }
+                }
+            }
         }
 
+        // Fallback to JOIN-based search if search service unavailable
         global $wpdb;
 
-        // Configure search based on type
-        $config = array(
-            'actor' => array(
-                'where_column' => 'a.actor_name',
-                'order_by' => 'f.year DESC',
-                'result_key' => 'actor',
-                'result_field' => 'actor_name',
-                'list_key' => 'films'
-            ),
-            'brand' => array(
-                'where_column' => 'b.brand_name',
-                'order_by' => 'f.year DESC',
-                'result_key' => 'brand',
-                'result_field' => 'brand_name',
-                'list_key' => 'films'
-            ),
-            'film' => array(
-                'where_column' => 'f.title',
-                'order_by' => 'a.actor_name',
-                'result_key' => 'film',
-                'result_field' => 'title',
-                'list_key' => 'watches'
-            )
-        );
-
-        $cfg = $config[$search_type];
-
-        // Clear any previous errors
-        $wpdb->last_error = '';
-
         $results = $wpdb->get_results($wpdb->prepare(
-            "SELECT f.title, f.year, a.actor_name, b.brand_name, w.model_reference,
-                    c.character_name, faw.narrative_role, faw.image_url, faw.confidence_level, faw.source_url
+            "SELECT f.title, f.year, b.brand_name, w.model_reference,
+                    c.character_name, faw.narrative_role, faw.image_url, faw.source_url, faw.confidence_level, a.actor_name
              FROM {$this->table_film_actor_watch} faw
              JOIN {$this->table_films} f ON faw.film_id = f.film_id
              JOIN {$this->table_actors} a ON faw.actor_id = a.actor_id
              JOIN {$this->table_characters} c ON faw.character_id = c.character_id
              JOIN {$this->table_watches} w ON faw.watch_id = w.watch_id
              JOIN {$this->table_brands} b ON w.brand_id = b.brand_id
-             WHERE {$cfg['where_column']} LIKE %s
-             ORDER BY {$cfg['order_by']}",
-            '%' . $wpdb->esc_like($search_term) . '%'
+             WHERE a.actor_name LIKE %s
+             AND faw.deleted_at IS NULL
+             AND f.deleted_at IS NULL
+             AND a.deleted_at IS NULL
+             ORDER BY f.year DESC
+             LIMIT 100",
+            '%' . $wpdb->esc_like($actor_name) . '%'
         ), ARRAY_A);
 
-        // Check for query errors (only if query actually failed)
-        if ($results === null && $wpdb->last_error) {
-            error_log("FWD Database: Query error in {$search_type} search - " . $wpdb->last_error);
-            return array(
-                'success' => false,
-                'error' => 'Database query failed',
-                'count' => 0,
-                $cfg['list_key'] => array()
-            );
-        }
-
-        // Treat null as empty array (no results, but not an error)
-        if ($results === null) {
-            $results = array();
-        }
-
-        // Batch load all image captions in a single query (fixes N+1 problem)
-        $image_urls = array_filter(array_column($results, 'image_url'));
-        $captions = fwd_get_image_captions_batch($image_urls);
-
-        $items = array();
-        $actual_search_value = null;
+        $films = array();
+        $actual_actor_name = null;
         foreach ($results as $row) {
-            if (!$actual_search_value && isset($row[$cfg['result_field']])) {
-                $actual_search_value = $row[$cfg['result_field']];
+            if (!$actual_actor_name) {
+                $actual_actor_name = $row['actor_name'];
             }
-            $image_caption = isset($captions[$row['image_url']]) ? $captions[$row['image_url']] : '';
-            $items[] = array(
+            $image_caption = !empty($row['image_url']) ? fwd_get_image_caption($row['image_url']) : '';
+            $films[] = array(
                 'title' => $row['title'],
                 'year' => $row['year'],
                 'actor' => $row['actor_name'],
@@ -782,94 +1331,244 @@ class FWD_Database {
                 'narrative' => $row['narrative_role'],
                 'image_url' => $row['image_url'],
                 'image_caption' => $image_caption,
-                'confidence_level' => $row['confidence_level'],
-                'source' => $row['source_url']
+                'source' => $row['source_url'],
+                'confidence_level' => $row['confidence_level']
             );
         }
 
-        $result = array(
+        return array(
             'success' => true,
-            $cfg['result_key'] => $actual_search_value ? $actual_search_value : $search_term,
-            'count' => count($items),
-            $cfg['list_key'] => $items
+            'actor' => $actual_actor_name ? $actual_actor_name : $actor_name,
+            'count' => count($films),
+            'films' => $films
         );
-
-        // Cache search results for 1 hour
-        set_transient($cache_key, $result, HOUR_IN_SECONDS);
-
-        return $result;
-    }
-
-    /**
-     * Query watches by actor
-     *
-     * @param string $actor_name Actor name to search for
-     * @return array Result array with films
-     */
-    public function query_actor($actor_name) {
-        return $this->query_unified($actor_name, 'actor');
     }
 
     /**
      * Query films by brand
      *
-     * @param string $brand_name Brand name to search for
-     * @return array Result array with films
+     * Uses fast FULLTEXT search service if available, falls back to JOIN-based search otherwise.
      */
     public function query_brand($brand_name) {
-        return $this->query_unified($brand_name, 'brand');
+        // Use fast search service if available
+        if (function_exists('fwd_search')) {
+            $search_results = fwd_search()->search($brand_name, false);
+
+            if ($search_results['success'] && isset($search_results['brands'])) {
+                // brands is a numeric array
+                foreach ($search_results['brands'] as $brand_data) {
+                    // Return the first brand match
+                    if (stripos($brand_data['brand'], $brand_name) !== false) {
+                        return array(
+                            'success' => true,
+                            'brand' => $brand_data['brand'],
+                            'count' => $brand_data['count'],
+                            'film_count' => $brand_data['film_count'],
+                            'films' => $brand_data['films']
+                        );
+                    }
+                }
+            }
+        }
+
+        // Fallback to JOIN-based search if search service unavailable
+        global $wpdb;
+
+        $results = $wpdb->get_results($wpdb->prepare(
+            "SELECT f.film_id, f.title, f.year, a.actor_name, w.model_reference,
+                    c.character_name, faw.narrative_role, faw.image_url, faw.source_url, faw.confidence_level, b.brand_name
+             FROM {$this->table_film_actor_watch} faw
+             JOIN {$this->table_films} f ON faw.film_id = f.film_id
+             JOIN {$this->table_actors} a ON faw.actor_id = a.actor_id
+             JOIN {$this->table_characters} c ON faw.character_id = c.character_id
+             JOIN {$this->table_watches} w ON faw.watch_id = w.watch_id
+             JOIN {$this->table_brands} b ON w.brand_id = b.brand_id
+             WHERE b.brand_name LIKE %s
+             AND faw.deleted_at IS NULL
+             AND f.deleted_at IS NULL
+             AND b.deleted_at IS NULL
+             ORDER BY f.year DESC, f.title, a.actor_name
+             LIMIT 100",
+            '%' . $wpdb->esc_like($brand_name) . '%'
+        ), ARRAY_A);
+
+        // Group watches by film
+        $films_grouped = array();
+        $actual_brand_name = null;
+        $total_watches = 0;
+
+        foreach ($results as $row) {
+            if (!$actual_brand_name) {
+                $actual_brand_name = $row['brand_name'];
+            }
+
+            $film_key = $row['film_id'];
+            if (!isset($films_grouped[$film_key])) {
+                $films_grouped[$film_key] = array(
+                    'title' => $row['title'],
+                    'year' => $row['year'],
+                    'watches' => array()
+                );
+            }
+
+            $image_caption = !empty($row['image_url']) ? fwd_get_image_caption($row['image_url']) : '';
+            $films_grouped[$film_key]['watches'][] = array(
+                'title' => $row['title'],
+                'year' => $row['year'],
+                'actor' => $row['actor_name'],
+                'brand' => $row['brand_name'],
+                'model' => $row['model_reference'],
+                'character' => $row['character_name'],
+                'narrative' => $row['narrative_role'],
+                'image_url' => $row['image_url'],
+                'image_caption' => $image_caption,
+                'source' => $row['source_url'],
+                'confidence_level' => $row['confidence_level']
+            );
+            $total_watches++;
+        }
+
+        return array(
+            'success' => true,
+            'brand' => $actual_brand_name ? $actual_brand_name : $brand_name,
+            'count' => $total_watches,
+            'film_count' => count($films_grouped),
+            'films' => array_values($films_grouped)
+        );
     }
 
     /**
      * Query watches by film
      *
-     * @param string $film_title Film title to search for
-     * @return array Result array with watches
+     * Uses fast FULLTEXT search service if available, falls back to JOIN-based search otherwise.
      */
     public function query_film($film_title) {
-        return $this->query_unified($film_title, 'film');
+        // Use fast search service if available
+        if (function_exists('fwd_search')) {
+            $search_results = fwd_search()->search($film_title, false);
+
+            if ($search_results['success'] && isset($search_results['films'])) {
+                // films is a numeric array
+                foreach ($search_results['films'] as $film_data) {
+                    // Return the first film match
+                    if (stripos($film_data['title'], $film_title) !== false) {
+                        // Count watches in this film
+                        $watch_count = isset($film_data['watches']) ? count($film_data['watches']) : 0;
+                        return array(
+                            'success' => true,
+                            'count' => $watch_count,
+                            'film_count' => 1,
+                            'films' => array($film_data)
+                        );
+                    }
+                }
+            }
+        }
+
+        // Fallback to JOIN-based search if search service unavailable
+        global $wpdb;
+
+        $results = $wpdb->get_results($wpdb->prepare(
+            "SELECT f.title, f.year, f.film_id, a.actor_name, b.brand_name,
+                    w.model_reference, c.character_name, faw.narrative_role, faw.image_url, faw.source_url, faw.confidence_level
+             FROM {$this->table_film_actor_watch} faw
+             JOIN {$this->table_films} f ON faw.film_id = f.film_id
+             JOIN {$this->table_actors} a ON faw.actor_id = a.actor_id
+             JOIN {$this->table_characters} c ON faw.character_id = c.character_id
+             JOIN {$this->table_watches} w ON faw.watch_id = w.watch_id
+             JOIN {$this->table_brands} b ON w.brand_id = b.brand_id
+             WHERE f.title LIKE %s
+             AND faw.deleted_at IS NULL
+             AND f.deleted_at IS NULL
+             ORDER BY f.year DESC, f.title, a.actor_name
+             LIMIT 100",
+            '%' . $wpdb->esc_like($film_title) . '%'
+        ), ARRAY_A);
+
+        // Group watches by film
+        $films_grouped = array();
+        $total_watches = 0;
+
+        foreach ($results as $row) {
+            $film_key = $row['film_id'];
+
+            if (!isset($films_grouped[$film_key])) {
+                $films_grouped[$film_key] = array(
+                    'title' => $row['title'],
+                    'year' => $row['year'],
+                    'watches' => array()
+                );
+            }
+
+            $image_caption = !empty($row['image_url']) ? fwd_get_image_caption($row['image_url']) : '';
+            $films_grouped[$film_key]['watches'][] = array(
+                'title' => $row['title'],
+                'year' => $row['year'],
+                'actor' => $row['actor_name'],
+                'brand' => $row['brand_name'],
+                'model' => $row['model_reference'],
+                'character' => $row['character_name'],
+                'narrative' => $row['narrative_role'],
+                'image_url' => $row['image_url'],
+                'image_caption' => $image_caption,
+                'source' => $row['source_url'],
+                'confidence_level' => $row['confidence_level']
+            );
+            $total_watches++;
+        }
+
+        // Convert to indexed array
+        $films = array_values($films_grouped);
+
+        return array(
+            'success' => true,
+            'count' => $total_watches,
+            'film_count' => count($films),
+            'films' => $films
+        );
+    }
+    /**
+     * Query all categories (actor, brand, film)
+     *
+     * Uses fast FULLTEXT search service if available, which searches all categories in one query.
+     * Falls back to calling three separate query methods if search service unavailable.
+     */
+    public function query_all($search_term) {
+        // Use fast unified search if available (searches everything in one query)
+        if (function_exists('fwd_search')) {
+            $search_results = fwd_search()->search($search_term, false);
+
+            if ($search_results['success']) {
+                // Only return films - film is the unique key for all search results
+                $films = isset($search_results['films']) ? $search_results['films'] : array();
+                $total_watches = 0;
+                foreach ($films as $film_data) {
+                    $total_watches += isset($film_data['watches']) ? count($film_data['watches']) : 0;
+                }
+
+                return array(
+                    'success' => true,
+                    'query' => $search_term,
+                    'films' => $films,
+                    'total_count' => $total_watches
+                );
+            }
+        }
+
+        // Fallback: Use query_film which already returns film-grouped results
+        return $this->query_film($search_term);
     }
 
     /**
      * Get database statistics
-     *
-     * @return array Statistics array with success flag and stats data
      */
     public function get_stats() {
-        // Try to get cached stats first
-        $cached_stats = get_transient('fwd_database_stats');
-        if ($cached_stats !== false) {
-            return $cached_stats;
-        }
-
         global $wpdb;
 
-        // Clear any previous errors
-        $wpdb->last_error = '';
-
         $film_count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_films}");
-        if ($film_count === null && $wpdb->last_error) {
-            error_log('FWD Database: Stats query error (films) - ' . $wpdb->last_error);
-            return array('success' => false, 'error' => 'Failed to retrieve film count');
-        }
-
         $actor_count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_actors}");
-        if ($actor_count === null && $wpdb->last_error) {
-            error_log('FWD Database: Stats query error (actors) - ' . $wpdb->last_error);
-            return array('success' => false, 'error' => 'Failed to retrieve actor count');
-        }
-
         $brand_count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_brands}");
-        if ($brand_count === null && $wpdb->last_error) {
-            error_log('FWD Database: Stats query error (brands) - ' . $wpdb->last_error);
-            return array('success' => false, 'error' => 'Failed to retrieve brand count');
-        }
-
         $entry_count = $wpdb->get_var("SELECT COUNT(*) FROM {$this->table_film_actor_watch}");
-        if ($entry_count === null && $wpdb->last_error) {
-            error_log('FWD Database: Stats query error (entries) - ' . $wpdb->last_error);
-            return array('success' => false, 'error' => 'Failed to retrieve entry count');
-        }
 
         $top_brands = $wpdb->get_results(
             "SELECT b.brand_name, COUNT(*) as count
@@ -882,56 +1581,29 @@ class FWD_Database {
             ARRAY_A
         );
 
-        if ($top_brands === null && $wpdb->last_error) {
-            error_log('FWD Database: Stats query error (top_brands) - ' . $wpdb->last_error);
-            return array('success' => false, 'error' => 'Failed to retrieve top brands');
-        }
-
         $brands_list = array();
-        if (is_array($top_brands)) {
-            foreach ($top_brands as $row) {
-                $brands_list[] = array(
-                    'brand' => $row['brand_name'],
-                    'count' => $row['count']
-                );
-            }
+        foreach ($top_brands as $row) {
+            $brands_list[] = array(
+                'brand' => $row['brand_name'],
+                'count' => $row['count']
+            );
         }
 
-        $stats = array(
+        return array(
             'success' => true,
             'stats' => array(
-                'films' => (int)$film_count,
-                'actors' => (int)$actor_count,
-                'brands' => (int)$brand_count,
-                'entries' => (int)$entry_count,
+                'films' => $film_count,
+                'actors' => $actor_count,
+                'brands' => $brand_count,
+                'entries' => $entry_count,
                 'top_brands' => $brands_list
             )
         );
-
-        // Cache stats for 1 hour
-        set_transient('fwd_database_stats', $stats, self::CACHE_DURATION_STATS);
-
-        return $stats;
-    }
-
-    /**
-     * Invalidate stats and movies list caches
-     * Call this after inserting/updating/deleting data
-     */
-    private function invalidate_caches() {
-        delete_transient('fwd_database_stats');
-        delete_transient('fwd_movies_list_cache');
     }
 }
 
 /**
- * Get global database instance (singleton pattern)
- *
- * Returns a single shared instance of the database handler
- * throughout the plugin lifecycle. Instance is created on
- * first call and reused on subsequent calls.
- *
- * @return FWD_Database Database handler instance
+ * Get global database instance
  */
 function fwd_db() {
     static $instance = null;

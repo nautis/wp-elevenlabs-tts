@@ -10,132 +10,23 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Validate AJAX request with nonce and capability check
- * Consolidates duplicate security validation across all AJAX handlers
- *
- * @param bool $require_admin Whether to require admin capabilities
- * @return bool True if valid, exits with JSON error if not
- */
-function fwd_validate_ajax_request($require_admin = false) {
-    check_ajax_referer('fwd_ajax_nonce', 'nonce');
-
-    if ($require_admin && !current_user_can('manage_options')) {
-        wp_send_json_error(array('message' => 'Unauthorized'));
-        exit;
-    }
-
-    return true;
-}
-
-/**
- * Validate entry data with comprehensive checks
- *
- * @param array $data Entry data to validate
- * @return array|WP_Error Array of errors or WP_Error on validation failure
- */
-function fwd_validate_entry_data($data) {
-    $errors = array();
-
-    // Validate actor name (required, 1-255 chars)
-    if (empty($data['actor']) || strlen($data['actor']) > 255) {
-        $errors[] = 'Actor name must be between 1 and 255 characters';
-    }
-
-    // Validate character name (required, 1-255 chars)
-    if (empty($data['character']) || strlen($data['character']) > 255) {
-        $errors[] = 'Character name must be between 1 and 255 characters';
-    }
-
-    // Validate brand name (required, 1-100 chars)
-    if (empty($data['brand']) || strlen($data['brand']) > 100) {
-        $errors[] = 'Brand name must be between 1 and 100 characters';
-    }
-
-    // Validate model reference (required, 1-255 chars)
-    if (empty($data['model']) || strlen($data['model']) > 255) {
-        $errors[] = 'Model reference must be between 1 and 255 characters';
-    }
-
-    // Validate title (required, 1-255 chars)
-    if (empty($data['title']) || strlen($data['title']) > 255) {
-        $errors[] = 'Film title must be between 1 and 255 characters';
-    }
-
-    // Validate year (1888 to next year)
-    $current_year = (int) date('Y');
-    $min_year = 1888; // First motion picture
-    $max_year = $current_year + 1; // Allow next year for announced films
-
-    if (empty($data['year']) || !is_numeric($data['year'])) {
-        $errors[] = 'Film year is required and must be a number';
-    } elseif ($data['year'] < $min_year || $data['year'] > $max_year) {
-        $errors[] = sprintf('Film year must be between %d and %d', $min_year, $max_year);
-    }
-
-    // Validate narrative (optional, max 65535 chars for TEXT field)
-    if (isset($data['narrative']) && strlen($data['narrative']) > 65535) {
-        $errors[] = 'Narrative text is too long (maximum 65,535 characters)';
-    }
-
-    // Validate image_url (optional, max 2083 chars, must be valid URL)
-    if (!empty($data['image_url'])) {
-        if (strlen($data['image_url']) > 2083) {
-            $errors[] = 'Image URL is too long (maximum 2,083 characters)';
-        } elseif (!filter_var($data['image_url'], FILTER_VALIDATE_URL)) {
-            $errors[] = 'Image URL is not a valid URL';
-        } elseif (!preg_match('/\.(jpg|jpeg|png|gif|webp)$/i', $data['image_url'])) {
-            $errors[] = 'Image URL must end with a valid image extension (.jpg, .jpeg, .png, .gif, .webp)';
-        }
-    }
-
-    // Validate source_url (optional, max 2083 chars, must be valid URL)
-    if (!empty($data['source_url'])) {
-        if (strlen($data['source_url']) > 2083) {
-            $errors[] = 'Source URL is too long (maximum 2,083 characters)';
-        } elseif (!filter_var($data['source_url'], FILTER_VALIDATE_URL)) {
-            $errors[] = 'Source URL is not a valid URL';
-        }
-    }
-
-    // Validate confidence_level (optional, max 65535 chars)
-    if (isset($data['confidence_level']) && strlen($data['confidence_level']) > 65535) {
-        $errors[] = 'Confidence level text is too long (maximum 65,535 characters)';
-    }
-
-    // Return errors array or WP_Error
-    if (!empty($errors)) {
-        return new WP_Error('validation_failed', 'Entry validation failed', $errors);
-    }
-
-    return array();
-}
-
-/**
- * Get database statistics
+ * Get database statistics (cached for 5 minutes)
  */
 function fwd_get_stats() {
-    return fwd_db()->get_stats();
+    return fwd_cache()->remember('stats', function() {
+        return fwd_db()->get_stats();
+    }, 5 * MINUTE_IN_SECONDS);
 }
 
 /**
- * Query by actor name
+ * Unified search across all categories (cached for 15 minutes)
+ * This is the only search method we need - it searches actors, brands, and films in one query
  */
-function fwd_query_actor($actor_name) {
-    return fwd_db()->query_actor($actor_name);
-}
-
-/**
- * Query by brand name
- */
-function fwd_query_brand($brand_name) {
-    return fwd_db()->query_brand($brand_name);
-}
-
-/**
- * Query by film title
- */
-function fwd_query_film($film_title) {
-    return fwd_db()->query_film($film_title);
+function fwd_query_all($search_term) {
+    $cache_key = 'all_' . md5(strtolower(trim($search_term)));
+    return fwd_cache()->remember($cache_key, function() use ($search_term) {
+        return fwd_db()->query_all($search_term);
+    });
 }
 
 /**
@@ -147,79 +38,48 @@ function fwd_get_image_caption($image_url) {
         return '';
     }
 
-    global $wpdb;
+    // Try WordPress's built-in function first
+    $attachment_id = attachment_url_to_postid($image_url);
 
-    // Get attachment ID from URL
-    $attachment_id = $wpdb->get_var($wpdb->prepare(
-        "SELECT ID FROM {$wpdb->posts} WHERE guid = %s AND post_type = 'attachment'",
-        $image_url
-    ));
+    // If that fails, try searching by filename (handles format conversions like jpeg->avif)
+    if (!$attachment_id) {
+        global $wpdb;
+
+        // Extract filename without extension and size suffix
+        $filename = basename($image_url);
+        $filename = preg_replace('/\.(jpeg|jpg|png|gif|webp|avif)$/i', '', $filename);
+        $filename = preg_replace('/-\d+x\d+$/', '', $filename); // Remove size suffix like -150x150
+        $filename = str_replace('-scaled', '', $filename); // Remove -scaled
+
+        // Search for attachment by title or guid pattern
+        $attachment_id = $wpdb->get_var($wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts}
+             WHERE post_type = 'attachment'
+             AND (post_title LIKE %s OR guid LIKE %s)
+             ORDER BY ID DESC
+             LIMIT 1",
+            '%' . $wpdb->esc_like($filename) . '%',
+            '%' . $wpdb->esc_like($filename) . '%'
+        ));
+    }
 
     if (!$attachment_id) {
         return '';
     }
 
     // Get the caption from post_excerpt
-    $caption = $wpdb->get_var($wpdb->prepare(
-        "SELECT post_excerpt FROM {$wpdb->posts} WHERE ID = %d",
-        $attachment_id
-    ));
+    $caption = get_post_field('post_excerpt', $attachment_id);
 
     return $caption ? trim($caption) : '';
 }
 
 /**
- * Get image captions for multiple URLs at once (batch query)
- * Solves N+1 query problem when displaying multiple results
- *
- * @param array $image_urls Array of image URLs
- * @return array Associative array mapping URL => caption
- */
-function fwd_get_image_captions_batch($image_urls) {
-    if (empty($image_urls)) {
-        return array();
-    }
-
-    global $wpdb;
-
-    // Remove empty URLs and get unique values
-    $image_urls = array_filter(array_unique($image_urls));
-
-    if (empty($image_urls)) {
-        return array();
-    }
-
-    // Build placeholders for IN clause
-    $placeholders = implode(',', array_fill(0, count($image_urls), '%s'));
-
-    // Single query to get all captions at once
-    $results = $wpdb->get_results($wpdb->prepare(
-        "SELECT guid, post_excerpt FROM {$wpdb->posts}
-         WHERE guid IN ($placeholders) AND post_type = 'attachment'",
-        ...$image_urls
-    ), ARRAY_A);
-
-    // Map URLs to captions
-    $captions = array();
-    foreach ($results as $row) {
-        $captions[$row['guid']] = trim($row['post_excerpt']);
-    }
-
-    return $captions;
-}
-
-/**
  * Add new entry to database
  */
-function fwd_add_entry($entry_text, $narrative = '', $image_url = '', $confidence_level = '', $source_url = '', $force_overwrite = false) {
-    $parsed = null;
-
+function fwd_add_entry($entry_text, $narrative = '', $image_url = '', $gallery_ids = '', $confidence_level = '', $force_overwrite = false) {
     try {
-        // Use smart parser with AI fallback
-        $parsed = fwd_smart_parse($entry_text);
-
-        // Get database instance
         $db = fwd_db();
+        $parsed = $db->parse_entry($entry_text);
 
         if ($narrative) {
             $parsed['narrative'] = $narrative;
@@ -227,21 +87,20 @@ function fwd_add_entry($entry_text, $narrative = '', $image_url = '', $confidenc
         if ($image_url) {
             $parsed['image_url'] = $image_url;
         }
+        if ($gallery_ids) {
+            $parsed['gallery_ids'] = $gallery_ids;
+        }
         if ($confidence_level) {
             $parsed['confidence_level'] = $confidence_level;
         }
-        if ($source_url) {
-            $parsed['source_url'] = $source_url;
-        }
-
-        // Validate entry data before inserting
-        $validation_result = fwd_validate_entry_data($parsed);
-        if (is_wp_error($validation_result)) {
-            $errors = $validation_result->get_error_data();
-            throw new Exception('Validation failed: ' . implode('; ', $errors));
-        }
 
         $db->insert_entry($parsed, $force_overwrite);
+
+        // Clear relevant caches
+        delete_transient('fwd_stats');
+        delete_transient('fwd_actor_' . md5(strtolower(trim($parsed['actor']))));
+        delete_transient('fwd_brand_' . md5(strtolower(trim($parsed['brand']))));
+        delete_transient('fwd_film_' . md5(strtolower(trim($parsed['title']))));
 
         $message = $force_overwrite
             ? "Successfully updated: {$parsed['actor']} wearing {$parsed['brand']} {$parsed['model']} in {$parsed['title']} ({$parsed['year']})"
@@ -258,19 +117,13 @@ function fwd_add_entry($entry_text, $narrative = '', $image_url = '', $confidenc
         // Check if this is a duplicate error
         if (strpos($error_message, 'DUPLICATE:') === 0) {
             $existing_data = json_decode(substr($error_message, 10), true);
-            $result = array(
+            return array(
                 'success' => false,
                 'is_duplicate' => true,
                 'error' => "Duplicate entry found",
-                'existing' => $existing_data
+                'existing' => $existing_data,
+                'new' => $parsed
             );
-
-            // Only include 'new' if parsing succeeded
-            if ($parsed !== null) {
-                $result['new'] = $parsed;
-            }
-
-            return $result;
         }
 
         return array(
@@ -284,30 +137,17 @@ function fwd_add_entry($entry_text, $narrative = '', $image_url = '', $confidenc
  * AJAX handler for search requests
  */
 function fwd_ajax_search() {
-    fwd_validate_ajax_request(false);
-
-    // Use empty() instead of isset() for better validation
-    if (empty($_POST['query_type']) || empty($_POST['search_term'])) {
-        wp_send_json_error(array('message' => 'Missing required parameters'));
-    }
+    check_ajax_referer('fwd_ajax_nonce', 'nonce');
 
     $query_type = sanitize_text_field($_POST['query_type']);
     $search_term = sanitize_text_field($_POST['search_term']);
 
-    $result = null;
-    switch ($query_type) {
-        case 'actor':
-            $result = fwd_query_actor($search_term);
-            break;
-        case 'brand':
-            $result = fwd_query_brand($search_term);
-            break;
-        case 'film':
-            $result = fwd_query_film($search_term);
-            break;
-        default:
-            wp_send_json_error(array('message' => 'Invalid query type'));
+    if (empty($search_term)) {
+        wp_send_json_error(array('message' => 'Search term is required'));
     }
+
+    // Always use unified 'all' search (ignore query_type parameter for backwards compat)
+    $result = fwd_query_all($search_term);
 
     if (isset($result['success']) && $result['success']) {
         wp_send_json_success($result);
@@ -322,21 +162,25 @@ add_action('wp_ajax_nopriv_fwd_search', 'fwd_ajax_search');
  * AJAX handler for adding entries (admin only)
  */
 function fwd_ajax_add_entry() {
-    fwd_validate_ajax_request(true);
+    check_ajax_referer('fwd_ajax_nonce', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Unauthorized'));
+    }
 
     // Use wp_unslash to remove any magic quotes or unwanted slashes
     $entry_text = sanitize_text_field(wp_unslash($_POST['entry_text']));
     $narrative = sanitize_textarea_field(wp_unslash($_POST['narrative']));
     $image_url = isset($_POST['image_url']) ? esc_url_raw(wp_unslash($_POST['image_url'])) : '';
+    $gallery_ids = isset($_POST['gallery_ids']) ? sanitize_text_field(wp_unslash($_POST['gallery_ids'])) : '';
     $confidence_level = isset($_POST['confidence_level']) ? sanitize_textarea_field(wp_unslash($_POST['confidence_level'])) : '';
-    $source_url = isset($_POST['source_url']) ? esc_url_raw(wp_unslash($_POST['source_url'])) : '';
     $force_overwrite = isset($_POST['force_overwrite']) && $_POST['force_overwrite'] === 'true';
 
     if (empty($entry_text)) {
         wp_send_json_error(array('message' => 'Entry text is required'));
     }
 
-    $result = fwd_add_entry($entry_text, $narrative, $image_url, $confidence_level, $source_url, $force_overwrite);
+    $result = fwd_add_entry($entry_text, $narrative, $image_url, $gallery_ids, $confidence_level, $force_overwrite);
 
     if (isset($result['success']) && $result['success']) {
         wp_send_json_success($result);
@@ -348,13 +192,13 @@ add_action('wp_ajax_fwd_add_entry', 'fwd_ajax_add_entry');
 
 /**
  * Parse pipe-delimited entry
- * Format: Actor|Character|Brand|Model|Title|Year|Narrative|ImageURL|Confidence|SourceURL
+ * Format: Actor|Character|Brand|Model|Title|Year|Narrative|ImageURL|Confidence
  */
 function fwd_parse_pipe_entry($pipe_entry) {
     $parts = explode('|', $pipe_entry);
 
     if (count($parts) < 6) {
-        throw new Exception('Invalid format. Expected: Actor|Character|Brand|Model|Title|Year|Narrative|ImageURL|Confidence|SourceURL');
+        throw new Exception('Invalid format. Expected: Actor|Character|Brand|Model|Title|Year|Narrative|ImageURL|Confidence');
     }
 
     return array(
@@ -366,8 +210,7 @@ function fwd_parse_pipe_entry($pipe_entry) {
         'year' => intval(trim($parts[5])),
         'narrative' => isset($parts[6]) ? trim($parts[6]) : '',
         'image_url' => isset($parts[7]) ? trim($parts[7]) : '',
-        'confidence_level' => isset($parts[8]) ? trim($parts[8]) : '',
-        'source_url' => isset($parts[9]) ? trim($parts[9]) : ''
+        'confidence_level' => isset($parts[8]) ? trim($parts[8]) : ''
     );
 }
 
@@ -375,7 +218,11 @@ function fwd_parse_pipe_entry($pipe_entry) {
  * AJAX handler for quick entry (pipe-delimited)
  */
 function fwd_ajax_add_quick_entry() {
-    fwd_validate_ajax_request(true);
+    check_ajax_referer('fwd_ajax_nonce', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Unauthorized'));
+    }
 
     // Use wp_unslash to remove any magic quotes or unwanted slashes
     $quick_entry = sanitize_textarea_field(wp_unslash($_POST['quick_entry']));
@@ -387,16 +234,14 @@ function fwd_ajax_add_quick_entry() {
 
     try {
         $parsed = fwd_parse_pipe_entry($quick_entry);
-
-        // Validate entry data before inserting
-        $validation_result = fwd_validate_entry_data($parsed);
-        if (is_wp_error($validation_result)) {
-            $errors = $validation_result->get_error_data();
-            throw new Exception('Validation failed: ' . implode('; ', $errors));
-        }
-
         $db = fwd_db();
         $db->insert_entry($parsed, $force_overwrite);
+
+        // Clear relevant caches
+        delete_transient('fwd_stats');
+        delete_transient('fwd_actor_' . md5(strtolower(trim($parsed['actor']))));
+        delete_transient('fwd_brand_' . md5(strtolower(trim($parsed['brand']))));
+        delete_transient('fwd_film_' . md5(strtolower(trim($parsed['title']))));
 
         $message = $force_overwrite
             ? "Successfully updated: {$parsed['actor']} wearing {$parsed['brand']} {$parsed['model']} in {$parsed['title']} ({$parsed['year']})"
@@ -427,7 +272,11 @@ add_action('wp_ajax_fwd_add_quick_entry', 'fwd_ajax_add_quick_entry');
  * AJAX handler for CSV bulk import
  */
 function fwd_ajax_import_csv() {
-    fwd_validate_ajax_request(true);
+    check_ajax_referer('fwd_ajax_nonce', 'nonce');
+
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Unauthorized'));
+    }
 
     // Use wp_unslash to remove any magic quotes or unwanted slashes
     $csv_content = sanitize_textarea_field(wp_unslash($_POST['csv_content']));
@@ -437,6 +286,8 @@ function fwd_ajax_import_csv() {
     }
 
     try {
+        global $wpdb;
+
         $lines = explode("\n", $csv_content);
         $lines = array_filter(array_map('trim', $lines)); // Remove empty lines
 
@@ -445,15 +296,35 @@ function fwd_ajax_import_csv() {
         $error_count = 0;
         $errors = array();
 
-        foreach ($lines as $line_num => $line) {
-            try {
-                $parsed = fwd_parse_pipe_entry($line);
-                $db->insert_entry($parsed);
-                $success_count++;
-            } catch (Exception $e) {
-                $error_count++;
-                $errors[] = "Line " . ($line_num + 1) . ": " . $e->getMessage();
+        // Start transaction for atomic CSV import
+        $wpdb->query('START TRANSACTION');
+
+        try {
+            foreach ($lines as $line_num => $line) {
+                try {
+                    $parsed = fwd_parse_pipe_entry($line);
+                    $db->insert_entry($parsed);
+                    $success_count++;
+                } catch (Exception $e) {
+                    // Individual entry errors don't rollback the whole import
+                    $error_count++;
+                    $errors[] = "Line " . ($line_num + 1) . ": " . $e->getMessage();
+                }
             }
+
+            // Commit the transaction if we got here
+            $wpdb->query('COMMIT');
+
+            // Clear all caches after bulk import
+            fwd_cache()->forget('stats');
+            fwd_cache()->forget('brands_list');
+            // Note: We don't clear individual actor/brand/film caches here as there could be hundreds
+            // They will expire naturally after 15 minutes
+
+        } catch (Exception $e) {
+            // Rollback on catastrophic failure
+            $wpdb->query('ROLLBACK');
+            throw $e;
         }
 
         $message = "Import complete: {$success_count} successful, {$error_count} errors.";
@@ -471,154 +342,81 @@ function fwd_ajax_import_csv() {
 add_action('wp_ajax_fwd_import_csv', 'fwd_ajax_import_csv');
 
 /**
- * AJAX handler for testing TMDB connection
+ * Create or update a RegGallery post for a watch entry
+ *
+ * @param array $gallery_ids Array of WordPress attachment IDs
+ * @param array $entry_data Watch entry data for naming the gallery
+ * @param int|null $existing_regallery_id Existing RegGallery post ID to update (optional)
+ * @return int|false RegGallery post ID on success, false on failure
  */
-function fwd_ajax_test_tmdb() {
-    check_ajax_referer('fwd_ajax_nonce', 'nonce');
-
-    $query = isset($_POST['query']) ? sanitize_text_field($_POST['query']) : '';
-
-    if (empty($query)) {
-        wp_send_json_error(array('message' => 'Please enter a movie title'));
-        return;
+function fwd_create_regallery_post($gallery_ids, $entry_data, $existing_regallery_id = null) {
+    // Check if RegGallery plugin is active
+    if (!class_exists('REACG')) {
+        error_log('FWD: RegGallery plugin not active, cannot create gallery');
+        return false;
     }
 
-    $results = FWD_TMDB_API::search_movies($query);
-
-    if (is_wp_error($results)) {
-        wp_send_json_error(array('message' => $results->get_error_message()));
-        return;
+    if (empty($gallery_ids) || !is_array($gallery_ids)) {
+        error_log('FWD: No gallery IDs provided');
+        return false;
     }
 
-    // Limit to first 5 results for testing
-    $results = array_slice($results, 0, 5);
+    // Create gallery title from entry data
+    $title = sprintf(
+        '%s %s - %s (%s)',
+        $entry_data['brand'] ?? 'Watch',
+        $entry_data['model'] ?? '',
+        $entry_data['title'] ?? 'Film',
+        $entry_data['year'] ?? ''
+    );
 
-    // Format for display
-    $formatted = array();
-    foreach ($results as $movie) {
-        $formatted[] = array(
-            'title' => $movie['title'],
-            'year' => $movie['year'],
-            'poster' => $movie['poster_url']
-        );
+    $post_data = array(
+        'post_type' => 'reacg',
+        'post_title' => $title,
+        'post_status' => 'publish',
+        'post_author' => get_current_user_id()
+    );
+
+    // If updating existing gallery
+    if ($existing_regallery_id) {
+        $post_data['ID'] = $existing_regallery_id;
+        $post_id = wp_update_post($post_data);
+    } else {
+        $post_id = wp_insert_post($post_data);
     }
 
-    wp_send_json_success($formatted);
+    if (is_wp_error($post_id) || !$post_id) {
+        error_log('FWD: Failed to create/update RegGallery post: ' . (is_wp_error($post_id) ? $post_id->get_error_message() : 'Unknown error'));
+        return false;
+    }
+
+    // Store image IDs in RegGallery's expected format (JSON array)
+    update_post_meta($post_id, 'images_ids', json_encode($gallery_ids));
+
+    // Set default RegGallery options
+    update_post_meta($post_id, 'reacg_options', json_encode(array(
+        'type' => 'thumbnails',
+        'columns' => 3,
+        'lightbox' => 'true',
+        'show_caption' => 'true',
+        'caption_source' => 'caption'
+    )));
+
+    error_log("FWD: Created/updated RegGallery post ID {$post_id} for: {$title}");
+    return $post_id;
 }
-add_action('wp_ajax_fwd_test_tmdb', 'fwd_ajax_test_tmdb');
 
 /**
- * AJAX handler for movie search autocomplete
+ * Delete a RegGallery post
+ *
+ * @param int $regallery_id RegGallery post ID to delete
+ * @return bool True on success, false on failure
  */
-function fwd_ajax_search_movies() {
-    check_ajax_referer('fwd_ajax_nonce', 'nonce');
-
-    $query = isset($_POST['query']) ? sanitize_text_field($_POST['query']) : '';
-
-    if (empty($query) || strlen($query) < 2) {
-        wp_send_json_success(array());
-        return;
+function fwd_delete_regallery_post($regallery_id) {
+    if (!$regallery_id) {
+        return false;
     }
 
-    $results = FWD_TMDB_API::search_movies($query);
-
-    if (is_wp_error($results)) {
-        wp_send_json_error(array('message' => $results->get_error_message()));
-        return;
-    }
-
-    // Limit to first 10 results for autocomplete
-    $results = array_slice($results, 0, 10);
-
-    wp_send_json_success($results);
+    $result = wp_delete_post($regallery_id, true); // true = force delete, skip trash
+    return $result !== false;
 }
-add_action('wp_ajax_fwd_search_movies', 'fwd_ajax_search_movies');
-add_action('wp_ajax_nopriv_fwd_search_movies', 'fwd_ajax_search_movies');
-
-/**
- * AJAX handler for actor search autocomplete
- */
-function fwd_ajax_search_actors() {
-    check_ajax_referer('fwd_ajax_nonce', 'nonce');
-
-    $query = isset($_POST['query']) ? sanitize_text_field($_POST['query']) : '';
-
-    if (empty($query) || strlen($query) < 2) {
-        wp_send_json_success(array());
-        return;
-    }
-
-    $results = FWD_TMDB_API::search_people($query);
-
-    if (is_wp_error($results)) {
-        wp_send_json_error(array('message' => $results->get_error_message()));
-        return;
-    }
-
-    // Limit to first 10 results for autocomplete
-    $results = array_slice($results, 0, 10);
-
-    wp_send_json_success($results);
-}
-add_action('wp_ajax_fwd_search_actors', 'fwd_ajax_search_actors');
-add_action('wp_ajax_nopriv_fwd_search_actors', 'fwd_ajax_search_actors');
-
-/**
- * AJAX handler for getting movie details with cast
- */
-function fwd_ajax_get_movie_details() {
-    check_ajax_referer('fwd_ajax_nonce', 'nonce');
-
-    $movie_id = isset($_POST['movie_id']) ? intval($_POST['movie_id']) : 0;
-
-    if (empty($movie_id)) {
-        wp_send_json_error(array('message' => 'Invalid movie ID'));
-        return;
-    }
-
-    $movie = FWD_TMDB_API::get_movie($movie_id);
-
-    if (is_wp_error($movie)) {
-        wp_send_json_error(array('message' => $movie->get_error_message()));
-        return;
-    }
-
-    // Get cast
-    $cast = FWD_TMDB_API::get_movie_credits($movie_id, 10);
-
-    if (!is_wp_error($cast)) {
-        $movie['cast'] = $cast;
-    }
-
-    wp_send_json_success($movie);
-}
-add_action('wp_ajax_fwd_get_movie_details', 'fwd_ajax_get_movie_details');
-add_action('wp_ajax_nopriv_fwd_get_movie_details', 'fwd_ajax_get_movie_details');
-
-/**
- * AJAX handler for getting actor's movies
- */
-function fwd_ajax_get_actor_movies() {
-    check_ajax_referer('fwd_ajax_nonce', 'nonce');
-
-    $actor_id = isset($_POST['actor_id']) ? intval($_POST['actor_id']) : 0;
-
-    if (empty($actor_id)) {
-        wp_send_json_error(array('message' => 'Invalid actor ID'));
-        return;
-    }
-
-    $movies = FWD_TMDB_API::get_person_movie_credits($actor_id);
-
-    if (is_wp_error($movies)) {
-        wp_send_json_error(array('message' => $movies->get_error_message()));
-        return;
-    }
-
-    // Limit to first 20 movies
-    $movies = array_slice($movies, 0, 20);
-
-    wp_send_json_success($movies);
-}
-add_action('wp_ajax_fwd_get_actor_movies', 'fwd_ajax_get_actor_movies');
-add_action('wp_ajax_nopriv_fwd_get_actor_movies', 'fwd_ajax_get_actor_movies');

@@ -10,6 +10,29 @@ if (!defined('ABSPATH')) {
 }
 
 /**
+ * Get Claude API key from constant or option
+ *
+ * SECURITY BEST PRACTICE: For production environments, store API keys in wp-config.php:
+ * define('FWD_CLAUDE_API_KEY', 'sk-ant-api03-...');
+ *
+ * This prevents keys from being stored in the database where they could be:
+ * - Exposed in database backups
+ * - Accessed by SQL injection vulnerabilities
+ * - Visible to users with database access
+ *
+ * @return string|false API key or false if not configured
+ */
+function fwd_get_claude_api_key() {
+    // Prefer constant (more secure)
+    if (defined('FWD_CLAUDE_API_KEY') && !empty(FWD_CLAUDE_API_KEY)) {
+        return FWD_CLAUDE_API_KEY;
+    }
+
+    // Fall back to option (less secure, but more user-friendly)
+    return get_option('fwd_claude_api_key');
+}
+
+/**
  * Parse entry using AI (Claude API)
  *
  * @param string $text Natural language entry
@@ -17,15 +40,33 @@ if (!defined('ABSPATH')) {
  * @throws Exception If API call fails
  */
 function fwd_parse_with_ai($text) {
-    $api_key = get_option('fwd_claude_api_key');
+    // Security: Check user capability before allowing AI parsing
+    if (!current_user_can('edit_posts')) {
+        throw new Exception('Unauthorized: You must have edit_posts capability to use AI parsing.');
+    }
+
+    $api_key = fwd_get_claude_api_key();
 
     if (empty($api_key)) {
-        throw new Exception('Claude API key not configured. Please add it in Settings.');
+        throw new Exception('Claude API key not configured. Please add it in Settings or define FWD_CLAUDE_API_KEY in wp-config.php.');
     }
 
     // Rate limiting: max 10 calls per minute per user/IP
     $user_id = get_current_user_id();
-    $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
+    // Security: Validate and sanitize IP address
+    $ip_address = 'unknown';
+    if (isset($_SERVER['REMOTE_ADDR'])) {
+        $raw_ip = $_SERVER['REMOTE_ADDR'];
+        // Validate IP format (IPv4 or IPv6)
+        if (filter_var($raw_ip, FILTER_VALIDATE_IP)) {
+            $ip_address = $raw_ip;
+        } else {
+            // Log without raw input to prevent log injection
+            error_log('FWD Security: Invalid IP address format in REMOTE_ADDR (length: ' . strlen($raw_ip) . ')');
+        }
+    }
+
     $rate_key = 'fwd_ai_rate_limit_' . ($user_id > 0 ? 'user_' . $user_id : 'ip_' . md5($ip_address));
 
     $calls = (int) get_transient($rate_key);
@@ -222,7 +263,7 @@ function fwd_smart_parse($text) {
         }
 
         // Low confidence - try AI if available
-        $api_key = get_option('fwd_claude_api_key');
+        $api_key = fwd_get_claude_api_key();
         if (empty($api_key)) {
             // No AI available, return regex result with warning
             $parsed['warning'] = "Parse confidence is low ({$confidence}). Consider using AI parser or Quick Entry format.";
@@ -251,7 +292,7 @@ function fwd_smart_parse($text) {
 
     } catch (Exception $e) {
         // Regex completely failed - try AI as last resort
-        $api_key = get_option('fwd_claude_api_key');
+        $api_key = fwd_get_claude_api_key();
         if (empty($api_key)) {
             throw new Exception('Could not parse entry. Try using Quick Entry format (pipe-delimited).');
         }

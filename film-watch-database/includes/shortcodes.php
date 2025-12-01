@@ -9,76 +9,9 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Render entry HTML for display (consolidates duplicate rendering code)
- *
- * @param array $entry Entry data with keys: image_url, brand, model, year, title, actor, character, narrative, confidence_level, source
- * @param string $brand_name Optional: Override brand name (for brand shortcode where brand is constant)
- * @return string HTML output
- */
-function fwd_render_entry_html($entry, $brand_name = null) {
-    $brand = $brand_name ?: $entry['brand'];
-
-    ob_start();
-    ?>
-    <div class="fwd-entry">
-        <?php if (!empty($entry['image_url'])): ?>
-        <figure>
-            <img src="<?php echo esc_url($entry['image_url']); ?>"
-                 alt="<?php echo esc_attr($brand . ' ' . $entry['model']); ?>">
-            <?php
-            $caption = fwd_get_image_caption($entry['image_url']);
-            if ($caption): ?>
-            <figcaption class="wp-element-caption"><?php echo esc_html($caption); ?></figcaption>
-            <?php endif; ?>
-        </figure>
-        <?php endif; ?>
-
-        <p>
-            The <strong class="fwd-watch"><?php echo esc_html($brand); ?> <?php echo esc_html($entry['model']); ?></strong>
-            appears in the <?php echo esc_html($entry['year']); ?> film
-            <strong><?php echo esc_html($entry['title']); ?></strong>,
-            worn by <strong><?php echo esc_html($entry['actor']); ?></strong>
-            as <strong><?php echo esc_html($entry['character']); ?></strong>.
-            <?php if (!empty($entry['narrative'])): ?>
-                <?php echo wp_kses_post($entry['narrative']); ?>
-            <?php endif; ?>
-        </p>
-
-        <?php echo fwd_render_metadata($entry); ?>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-
-/**
- * Render metadata footer (confidence and source)
- *
- * @param array $entry Entry data
- * @return string HTML output
- */
-function fwd_render_metadata($entry) {
-    if (empty($entry['confidence_level']) && empty($entry['source'])) {
-        return '';
-    }
-
-    ob_start();
-    ?>
-    <p class="fwd-metadata" style="font-size: 0.9em; color: #666;">
-        <?php if (!empty($entry['confidence_level'])): ?>
-            <span class="fwd-confidence">Confidence score: <?php echo esc_html($entry['confidence_level']); ?></span>
-        <?php endif; ?>
-        <?php if (!empty($entry['source'])): ?>
-            <?php if (!empty($entry['confidence_level'])) echo ' | '; ?>
-            <a href="<?php echo esc_url($entry['source']); ?>" target="_blank" rel="noopener">Source ↗</a>
-        <?php endif; ?>
-    </p>
-    <?php
-    return ob_get_clean();
-}
-
-/**
  * Shortcode: [film_watch_search]
  * Displays a search form for the database
+ * Supports server-side rendering for SEO when URL parameters are present
  */
 function fwd_search_shortcode($atts) {
     $atts = shortcode_atts(array(
@@ -86,16 +19,25 @@ function fwd_search_shortcode($atts) {
         'placeholder' => 'Search movies, actors, or watch brands...',
     ), $atts);
 
+    // Check for URL parameters (server-side rendering for SEO)
+    $search_type = isset($_GET['type']) ? sanitize_text_field(wp_unslash($_GET['type'])) : '';
+    $search_query = isset($_GET['q']) ? sanitize_text_field(wp_unslash($_GET['q'])) : '';
+
+    $server_rendered_results = null;
+
+    // If we have URL parameters, perform server-side search for SEO
+    // Always use unified 'all' search regardless of type parameter
+    if ($search_query) {
+        $server_rendered_results = fwd_query_all($search_query);
+        // SEO meta tags are handled by includes/seo-handler.php
+    }
+
     ob_start();
     ?>
-    <div class="fwd-search-container">
+    <div class="fwd-search-container" data-initial-search='<?php echo $search_type && $search_query ? esc_attr(json_encode(array('type' => $search_type, 'query' => $search_query))) : ''; ?>'>
         <div class="fwd-search-form">
             <?php if ($atts['type'] === 'all'): ?>
-            <select id="fwd-search-type" class="fwd-select">
-                <option value="actor">Actor</option>
-                <option value="brand">Watch Brand</option>
-                <option value="film">Film Title</option>
-            </select>
+            <input type="hidden" id="fwd-search-type" value="all">
             <?php else: ?>
             <input type="hidden" id="fwd-search-type" value="<?php echo esc_attr($atts['type']); ?>">
             <?php endif; ?>
@@ -105,16 +47,256 @@ function fwd_search_shortcode($atts) {
                 id="fwd-search-input"
                 class="fwd-input"
                 placeholder="<?php echo esc_attr($atts['placeholder']); ?>"
+                value="<?php echo esc_attr($search_query); ?>"
             >
             <button id="fwd-search-btn" class="fwd-button">Search</button>
         </div>
 
-        <div id="fwd-search-results" class="fwd-results-container"></div>
+        <div id="fwd-search-results" class="fwd-results-container">
+            <?php if ($server_rendered_results && isset($server_rendered_results['success']) && $server_rendered_results['success']): ?>
+                <?php echo fwd_render_search_results($server_rendered_results, $search_type); ?>
+            <?php endif; ?>
+        </div>
     </div>
     <?php
     return ob_get_clean();
 }
 add_shortcode('film_watch_search', 'fwd_search_shortcode');
+
+/**
+ * Helper function: Render search results as HTML
+ * Used for both server-side rendering (SEO) and consistent output
+ */
+function fwd_render_search_results($data, $search_type) {
+    if (!isset($data['success']) || !$data['success']) {
+        return '<div class="fwd-no-results">No results found.</div>';
+    }
+
+    // Only handle unified 'all' search now
+    if (isset($data['total_count'])) {
+        if ($data['total_count'] === 0) {
+            return '<div class="fwd-no-results">No results found.</div>';
+        }
+        return fwd_render_unified_results($data);
+    }
+
+    // Fallback for unexpected data format
+    return '<div class="fwd-error">Invalid search results format.</div>';
+}
+
+
+/**
+ * Helper function: Render unified search results organized by film only
+ * All searches return results grouped by film (film is the unique key)
+ */
+function fwd_render_unified_results($data) {
+    ob_start();
+
+    // Pagination settings
+    $per_page = 10; // Number of film groups per page
+    $current_page = max(1, get_query_var('paged', 1));
+
+    // Only show films section - film is always the unique key
+    if (isset($data['films']) && count($data['films']) > 0):
+        $all_films = $data['films'];
+        $total_films = count($all_films);
+        $total_watches = 0;
+
+        // Count total watches
+        foreach ($all_films as $film_group) {
+            $total_watches += count($film_group['watches']);
+        }
+
+        // Calculate pagination
+        $total_pages = ceil($total_films / $per_page);
+        $offset = ($current_page - 1) * $per_page;
+        $paged_films = array_slice($all_films, $offset, $per_page);
+        ?>
+    <div class="fwd-results-section">
+        <h3 class="fwd-section-title">
+            <?php
+            $film_text = $total_films === 1 ? 'film' : 'films';
+            $watch_text = $total_watches === 1 ? 'watch' : 'watches';
+            echo esc_html($total_films) . ' ' . $film_text . ', ' . esc_html($total_watches) . ' ' . $watch_text;
+
+            if ($total_pages > 1) {
+                echo ' <span class="fwd-page-info">(Page ' . $current_page . ' of ' . $total_pages . ')</span>';
+            }
+            ?>
+        </h3>
+        <div class="fwd-results-list">
+            <?php foreach ($paged_films as $film_group): ?>
+                <div class="fwd-film-group">
+                    <h4 class="fwd-film-title"><?php echo esc_html($film_group['title']); ?> (<?php echo esc_html($film_group['year']); ?>) - <?php echo count($film_group['watches']); ?> watch<?php echo count($film_group['watches']) !== 1 ? 'es' : ''; ?></h4>
+                    <div class="fwd-film-watches">
+                        <?php foreach ($film_group['watches'] as $watch): ?>
+                            <?php echo fwd_render_entry_html($watch, 'film', null); ?>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+        <?php if ($total_pages > 1): ?>
+        <div class="fwd-pagination">
+            <?php
+            // Get current URL params (preserve search query)
+            $url_params = array(
+                'type' => isset($_GET['type']) ? sanitize_text_field(wp_unslash($_GET['type'])) : '',
+                'q' => isset($_GET['q']) ? sanitize_text_field(wp_unslash($_GET['q'])) : ''
+            );
+
+            // Previous button
+            if ($current_page > 1):
+                $prev_url = add_query_arg(array_merge($url_params, array('paged' => $current_page - 1)));
+            ?>
+                <a href="<?php echo esc_url($prev_url); ?>" class="fwd-page-btn fwd-prev-btn">&laquo; Previous</a>
+            <?php endif; ?>
+
+            <span class="fwd-page-numbers">
+                <?php
+                // Show page numbers (max 5 pages visible)
+                $range = 2; // Pages to show on each side of current page
+                $start = max(1, $current_page - $range);
+                $end = min($total_pages, $current_page + $range);
+
+                for ($i = $start; $i <= $end; $i++):
+                    if ($i === $current_page): ?>
+                        <span class="fwd-page-number fwd-current-page"><?php echo $i; ?></span>
+                    <?php else:
+                        $page_url = add_query_arg(array_merge($url_params, array('paged' => $i)));
+                    ?>
+                        <a href="<?php echo esc_url($page_url); ?>" class="fwd-page-number"><?php echo $i; ?></a>
+                    <?php endif;
+                endfor;
+                ?>
+            </span>
+
+            <?php
+            // Next button
+            if ($current_page < $total_pages):
+                $next_url = add_query_arg(array_merge($url_params, array('paged' => $current_page + 1)));
+            ?>
+                <a href="<?php echo esc_url($next_url); ?>" class="fwd-page-btn fwd-next-btn">Next &raquo;</a>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php else: ?>
+        <div class="fwd-no-results">No results found.</div>
+    <?php endif; ?>
+    <?php
+    return ob_get_clean();
+}
+
+/**
+ * Helper function: Render gallery using RegGallery-style markup
+ */
+function fwd_render_regallery($gallery_ids, $entry) {
+    if (empty($gallery_ids) || !is_array($gallery_ids)) {
+        return;
+    }
+
+    // Enqueue RegGallery CSS if available
+    if (wp_style_is('reacg_general', 'registered')) {
+        wp_enqueue_style('reacg_general');
+    }
+
+    $unique_id = 'fwd-gallery-' . md5(json_encode($gallery_ids));
+    ?>
+    <div class="reacg-gallery fwd-watch-gallery" id="<?php echo esc_attr($unique_id); ?>">
+        <div class="reacg-thumbnails-view">
+            <div class="reacg-thumbnails-grid" style="--columns: 3;">
+                <?php foreach ($gallery_ids as $index => $attachment_id):
+                    $attachment_id = intval($attachment_id);
+                    $image_data = wp_get_attachment_image_src($attachment_id, 'medium');
+                    $full_image = wp_get_attachment_image_src($attachment_id, 'full');
+                    $alt_text = get_post_meta($attachment_id, '_wp_attachment_image_alt', true);
+                    $caption = wp_get_attachment_caption($attachment_id);
+
+                    if (!$image_data) continue;
+
+                    $image_url = $image_data[0];
+                    $full_url = $full_image[0];
+                ?>
+                <div class="reacg-thumbnail-item" data-index="<?php echo esc_attr($index); ?>">
+                    <a href="<?php echo esc_url($full_url); ?>"
+                       class="reacg-thumbnail-link"
+                       data-lightbox="<?php echo esc_attr($unique_id); ?>"
+                       data-title="<?php echo esc_attr($caption ? $caption : $alt_text); ?>">
+                        <img src="<?php echo esc_url($image_url); ?>"
+                             alt="<?php echo esc_attr($alt_text ? $alt_text : $entry['brand'] . ' ' . $entry['model']); ?>"
+                             loading="lazy"
+                             class="reacg-thumbnail-image">
+                    </a>
+                    <?php if ($caption): ?>
+                    <div class="reacg-thumbnail-caption">
+                        <?php echo esc_html($caption); ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
+/**
+ * Helper function: Render individual entry as HTML
+ */
+function fwd_render_entry_html($entry, $type, $search_name = null) {
+    ob_start();
+    ?>
+    <div class="fwd-entry" itemscope itemtype="https://schema.org/Movie">
+        <?php
+        // Check for RegGallery ID first (proper RegGallery integration)
+        if (!empty($entry['regallery_id'])) {
+            // Use RegGallery's shortcode for full functionality
+            echo do_shortcode('[REACG id="' . intval($entry['regallery_id']) . '"]');
+        } elseif (!empty($entry['gallery_ids'])) {
+            // Fallback: render with custom gallery markup if RegGallery post doesn't exist
+            $gallery_ids = json_decode($entry['gallery_ids'], true);
+
+            if (is_array($gallery_ids) && !empty($gallery_ids)) {
+                fwd_render_regallery($gallery_ids, $entry);
+            }
+        } elseif (!empty($entry['image_url'])) {
+            // Fallback to single image_url for backwards compatibility
+            ?>
+        <figure>
+            <img src="<?php echo esc_url($entry['image_url']); ?>"
+                 alt="<?php echo esc_attr($entry['brand'] . ' ' . $entry['model']); ?>"
+                 itemprop="image">
+            <?php if (!empty($entry['image_caption'])): ?>
+            <figcaption class="wp-element-caption"><?php echo esc_html($entry['image_caption']); ?></figcaption>
+            <?php endif; ?>
+        </figure>
+        <?php } ?>
+        </p><p>
+        <p>
+            The <strong class="fwd-watch" itemprop="name">
+                <?php echo esc_html($entry['brand']); ?> <?php echo esc_html($entry['model']); ?>
+            </strong>
+            appears in the <span itemprop="copyrightYear"><?php echo esc_html($entry['year']); ?></span> film
+            <strong itemprop="name"><?php echo esc_html($entry['title']); ?></strong>,
+            worn by <strong itemprop="actor" itemscope itemtype="https://schema.org/Person">
+                <span itemprop="name"><?php echo esc_html($entry['actor']); ?></span>
+            </strong>
+            as <strong><?php echo esc_html($entry['character']); ?></strong>.<?php if (!empty($entry['narrative'])): ?> <?php echo wp_kses_post($entry['narrative']); ?><?php endif; ?>
+        </p>
+        <?php if (!empty($entry['confidence_level']) || !empty($entry['source'])): ?>
+        <p>
+            <?php if (!empty($entry['confidence_level'])): ?><em class="fwd-confidence">Confidence: <?php echo esc_html($entry['confidence_level']); ?></em><?php endif; ?>
+            <?php if (!empty($entry['source'])): ?>
+                <a href="<?php echo esc_url($entry['source']); ?>" target="_blank" rel="noopener">Source ↗</a>
+            <?php endif; ?>
+        </p>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
 
 /**
  * Shortcode: [film_watch_stats]
@@ -147,7 +329,7 @@ function fwd_stats_shortcode($atts) {
             </div>
             <div class="fwd-stat-card">
                 <div class="fwd-stat-number"><?php echo esc_html($stats['entries']); ?></div>
-                <div class="fwd-stat-label">Total Entries</div>
+                <div class="fwd-stat-label">Watches</div>
             </div>
         </div>
     </div>
@@ -156,442 +338,94 @@ function fwd_stats_shortcode($atts) {
 }
 add_shortcode('film_watch_stats', 'fwd_stats_shortcode');
 
-/**
- * Shortcode: [film_watch_top_brands]
- * Displays top watch brands by film count
+/** Shortcode: [film_watch_recently_added]
+ * Displays three columns showing recently added watches, actors, and films
+ * Only shows on landing page (hides when search is active)
  */
-function fwd_top_brands_shortcode($atts) {
+function fwd_recently_added_shortcode($atts) {
+    global $wpdb;
+    
+    // Hide when search is active
+    $search_type = isset($_GET['type']) ? sanitize_text_field(wp_unslash($_GET['type'])) : '';
+    $search_query = isset($_GET['q']) ? sanitize_text_field(wp_unslash($_GET['q'])) : '';
+    
+    if ($search_type && $search_query) {
+        return '';
+    }
+    
     $atts = shortcode_atts(array(
         'limit' => 10,
-        'title' => 'Top Watch Brands',
     ), $atts);
-
-    $stats_data = fwd_get_stats();
-
-    if (!isset($stats_data['success']) || !$stats_data['success']) {
-        return '<div class="fwd-error">Unable to load top brands.</div>';
-    }
-
-    $stats = $stats_data['stats'];
-
-    if (empty($stats['top_brands'])) {
-        return '<div class="fwd-no-results">No brand data available.</div>';
-    }
-
-    // Limit to specified number
-    $brands = array_slice($stats['top_brands'], 0, $atts['limit']);
-
+    
+    $limit = intval($atts['limit']);
+    
+    $base_url = get_permalink();
+    
+    $recent_watches = $wpdb->get_results($wpdb->prepare(
+        "SELECT DISTINCT b.brand_name, w.model_reference, faw.faw_id
+         FROM {$wpdb->prefix}fwd_film_actor_watch faw
+         JOIN {$wpdb->prefix}fwd_watches w ON faw.watch_id = w.watch_id
+         JOIN {$wpdb->prefix}fwd_brands b ON w.brand_id = b.brand_id
+         ORDER BY faw.created_at DESC
+         LIMIT %d",
+        $limit
+    ), ARRAY_A);
+    
+    $recent_actors = $wpdb->get_results($wpdb->prepare(
+        "SELECT actor_name, actor_id
+         FROM {$wpdb->prefix}fwd_actors
+         ORDER BY actor_id DESC
+         LIMIT %d",
+        $limit
+    ), ARRAY_A);
+    
+    $recent_films = $wpdb->get_results($wpdb->prepare(
+        "SELECT title, year, film_id
+         FROM {$wpdb->prefix}fwd_films
+         ORDER BY film_id DESC
+         LIMIT %d",
+        $limit
+    ), ARRAY_A);
+    
     ob_start();
     ?>
-    <div class="fwd-top-brands-container">
-        <div class="fwd-top-brands">
-            <?php if (!empty($atts['title'])): ?>
-            <h3><?php echo esc_html($atts['title']); ?></h3>
-            <?php endif; ?>
-            <div class="fwd-brands-list">
-                <?php foreach ($brands as $index => $brand): ?>
-                <div class="fwd-brand-item">
-                    <span class="fwd-brand-rank"><?php echo ($index + 1); ?>.</span>
-                    <span class="fwd-brand-name"><?php echo esc_html($brand['brand']); ?></span>
-                    <span class="fwd-brand-count"><?php echo esc_html($brand['count']); ?> film<?php echo $brand['count'] !== 1 ? 's' : ''; ?></span>
-                </div>
-                <?php endforeach; ?>
-            </div>
-        </div>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-add_shortcode('film_watch_top_brands', 'fwd_top_brands_shortcode');
-
-
-/**
- * Shortcode: [film_watch_actor name="Tom Cruise"]
- * Displays watches for a specific actor
- */
-function fwd_actor_shortcode($atts) {
-    $atts = shortcode_atts(array(
-        'name' => '',
-    ), $atts);
-
-    if (empty($atts['name'])) {
-        return '<div class="fwd-error">Please specify an actor name using the "name" attribute.</div>';
-    }
-
-    $result = fwd_query_actor($atts['name']);
-
-    if (!isset($result['success']) || !$result['success']) {
-        return '<div class="fwd-error">Unable to load data for ' . esc_html($atts['name']) . '.</div>';
-    }
-
-    if ($result['count'] === 0) {
-        return '<div class="fwd-no-results">No watches found for ' . esc_html($atts['name']) . '.</div>';
-    }
-
-    ob_start();
-    ?>
-    <div class="fwd-actor-results">
-        <h3><?php echo esc_html($atts['name']); ?>'s Watches in Film</h3>
-        <p>Found <?php echo esc_html($result['count']); ?> result(s)</p>
-
-        <?php foreach ($result['films'] as $film): ?>
-        <?php echo fwd_render_entry_html($film); ?>
-        <hr>
-        <?php endforeach; ?>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-add_shortcode('film_watch_actor', 'fwd_actor_shortcode');
-
-/**
- * Shortcode: [film_watch_brand name="Rolex"]
- * Displays films featuring a specific watch brand
- */
-function fwd_brand_shortcode($atts) {
-    $atts = shortcode_atts(array(
-        'name' => '',
-    ), $atts);
-
-    if (empty($atts['name'])) {
-        return '<div class="fwd-error">Please specify a brand name using the "name" attribute.</div>';
-    }
-
-    $result = fwd_query_brand($atts['name']);
-
-    if (!isset($result['success']) || !$result['success']) {
-        return '<div class="fwd-error">Unable to load data for ' . esc_html($atts['name']) . '.</div>';
-    }
-
-    if ($result['count'] === 0) {
-        return '<div class="fwd-no-results">No films found featuring ' . esc_html($atts['name']) . ' watches.</div>';
-    }
-
-    ob_start();
-    ?>
-    <div class="fwd-brand-results">
-        <h3><?php echo esc_html($atts['name']); ?> in Film</h3>
-        <p>Found <?php echo esc_html($result['count']); ?> result(s)</p>
-
-        <?php foreach ($result['films'] as $film): ?>
-        <?php echo fwd_render_entry_html($film, $atts['name']); ?>
-        <hr>
-        <?php endforeach; ?>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-add_shortcode('film_watch_brand', 'fwd_brand_shortcode');
-
-/**
- * Shortcode: [film_watch_film title="Casino Royale"]
- * Displays watches featured in a specific film
- */
-function fwd_film_shortcode($atts) {
-    $atts = shortcode_atts(array(
-        'title' => '',
-    ), $atts);
-
-    if (empty($atts['title'])) {
-        return '<div class="fwd-error">Please specify a film title using the "title" attribute.</div>';
-    }
-
-    $result = fwd_query_film($atts['title']);
-
-    if (!isset($result['success']) || !$result['success']) {
-        return '<div class="fwd-error">Unable to load data for ' . esc_html($atts['title']) . '.</div>';
-    }
-
-    if ($result['count'] === 0) {
-        return '<div class="fwd-no-results">No watches found in ' . esc_html($atts['title']) . '.</div>';
-    }
-
-    ob_start();
-    ?>
-    <div class="fwd-film-results">
-        <h3>Watches in <?php echo esc_html($atts['title']); ?></h3>
-        <p>Found <?php echo esc_html($result['count']); ?> watch(es)</p>
-
-        <?php foreach ($result['watches'] as $watch): ?>
-        <?php echo fwd_render_entry_html($watch); ?>
-        <hr>
-        <?php endforeach; ?>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-add_shortcode('film_watch_film', 'fwd_film_shortcode');
-
-/**
- * Shortcode: [film_watch_add]
- * Admin-only form to add new entries (requires manage_options capability)
- */
-function fwd_add_shortcode($atts) {
-    if (!current_user_can('manage_options')) {
-        return '<div class="fwd-error">You do not have permission to add entries.</div>';
-    }
-
-    ob_start();
-    ?>
-    <div class="fwd-add-container">
-        <h3>Add New Entry</h3>
-
-        <!-- Tab Navigation -->
-        <div class="fwd-tabs">
-            <button class="fwd-tab-btn active" data-tab="form">Structured Form</button>
-            <button class="fwd-tab-btn" data-tab="quick">Quick Entry</button>
-            <button class="fwd-tab-btn" data-tab="bulk">Bulk CSV Import</button>
-        </div>
-
-        <!-- Tab 1: Structured Form -->
-        <div class="fwd-tab-content active" id="fwd-tab-form">
-            <div class="fwd-examples">
-                <strong>Examples:</strong><br>
-                • "Jakob Cedergren wears Citizen Eco-Drive Divers 200M in The Guilty (2018)"<br>
-                • "Tom Cruise wears Breitling Navitimer in Top Gun: Maverick (2022)"<br>
-                • "In Interstellar (2014), Matthew McConaughey as Cooper wears Hamilton Khaki Pilot"
-            </div>
-
-            <div class="fwd-form-group">
-                <label for="fwd-entry-text">Entry Text:</label>
-                <input
-                    type="text"
-                    id="fwd-entry-text"
-                    class="fwd-input"
-                    placeholder="Actor wears Brand Model in Film (Year)"
-                >
-            </div>
-
-            <div class="fwd-form-group">
-                <label for="fwd-narrative">Narrative Role (optional):</label>
-                <textarea
-                    id="fwd-narrative"
-                    class="fwd-textarea"
-                    placeholder="Describe the watch's role in the film..."
-                ></textarea>
-            </div>
-
-            <div class="fwd-form-group">
-                <label for="fwd-image-url">Image URL (optional):</label>
-                <input
-                    type="url"
-                    id="fwd-image-url"
-                    class="fwd-input"
-                    placeholder="https://example.com/watch-image.jpg"
-                >
-                <button type="button" id="fwd-upload-image-btn" class="button">Upload Image</button>
-            </div>
-
-            <div class="fwd-form-group">
-                <label for="fwd-source-url">Source (optional):</label>
-                <input
-                    type="text"
-                    id="fwd-source-url"
-                    class="fwd-input"
-                    placeholder="e.g., IMDB, Watch Spotting Blog, etc."
-                >
-            </div>
-
-            <div class="fwd-form-group">
-                <label for="fwd-confidence">Confidence Level (optional):</label>
-                <select id="fwd-confidence" class="fwd-input">
-                    <option value="">Auto-detect</option>
-                    <option value="High confidence">High confidence</option>
-                    <option value="Medium confidence">Medium confidence</option>
-                    <option value="Low confidence">Low confidence</option>
-                </select>
-            </div>
-
-            <button id="fwd-add-btn" class="fwd-button">Add to Database</button>
-            <div id="fwd-add-result" class="fwd-result"></div>
-        </div>
-
-        <!-- Tab 2: Quick Entry (Pipe-Delimited) -->
-        <div class="fwd-tab-content" id="fwd-tab-quick">
-            <div class="fwd-examples">
-                <strong>Format:</strong> Actor|Character|Brand|Model|Title|Year|Narrative|ImageURL|Source<br><br>
-                <strong>Example:</strong><br>
-                <code>Ed Harris|Virgil "Bud" Brigman|Seiko|6309 "Turtle"|The Abyss|1989|Bud's trusted dive watch|https://example.com/seiko.jpg|https://example.com</code>
-            </div>
-
-            <div class="fwd-form-group">
-                <label for="fwd-quick-entry">Pipe-Delimited Entry:</label>
-                <textarea
-                    id="fwd-quick-entry"
-                    class="fwd-textarea"
-                    rows="3"
-                    placeholder="Actor|Character|Brand|Model|Title|Year|Narrative|ImageURL|Source"
-                ></textarea>
-            </div>
-
-            <button id="fwd-quick-add-btn" class="fwd-button">Add to Database</button>
-            <div id="fwd-quick-result" class="fwd-result"></div>
-        </div>
-
-        <!-- Tab 3: Bulk CSV Import -->
-        <div class="fwd-tab-content" id="fwd-tab-bulk">
-            <div class="fwd-examples">
-                <strong>CSV Format (pipe-delimited, one entry per line):</strong><br>
-                <code>Actor|Character|Brand|Model|Title|Year|Narrative|ImageURL|Source</code><br><br>
-                <strong>Example CSV:</strong><br>
-                <textarea readonly class="fwd-textarea" rows="3" style="font-family: monospace;">Ed Harris|Virgil "Bud" Brigman|Seiko|6309 "Turtle"|The Abyss|1989|Bud's trusted dive watch|https://example.com/seiko.jpg|https://example.com
-Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|https://example.com/rolex.jpg|https://example.com</textarea>
-            </div>
-
-            <div class="fwd-form-group">
-                <label for="fwd-csv-file">Upload CSV File:</label>
-                <input
-                    type="file"
-                    id="fwd-csv-file"
-                    class="fwd-input"
-                    accept=".csv,.txt"
-                >
-                <p><small>Maximum file size: 5MB. Use pipe (|) delimiters, UTF-8 encoding.</small></p>
-            </div>
-
-            <button id="fwd-csv-upload-btn" class="fwd-button">Import CSV</button>
-            <div id="fwd-csv-result" class="fwd-result"></div>
-        </div>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-add_shortcode('film_watch_add', 'fwd_add_shortcode');
-
-/**
- * Shortcode: [film_watch_movies_list]
- * Displays an alphabetical list of all movies in the database
- */
-function fwd_movies_list_shortcode($atts) {
-    global $wpdb;
-
-    $atts = shortcode_atts(array(
-        'base_url' => '/watches-in-film/',
-    ), $atts);
-
-    $table_films = $wpdb->prefix . 'fwd_films';
-    $table_film_actor_watch = $wpdb->prefix . 'fwd_film_actor_watch';
-
-    // Try to get cached films list
-    $films = get_transient('fwd_movies_list_cache');
-
-    if (false === $films) {
-        // Get all distinct films that have at least one watch entry
-        // Limit to 2000 films to prevent memory issues
-        $films = $wpdb->get_results("
-            SELECT DISTINCT f.title, f.year
-            FROM {$table_films} f
-            INNER JOIN {$table_film_actor_watch} faw ON f.film_id = faw.film_id
-            ORDER BY f.title ASC
-            LIMIT 2000
-        ", ARRAY_A);
-
-        // Cache for 24 hours
-        set_transient('fwd_movies_list_cache', $films, DAY_IN_SECONDS);
-    }
-
-    if (empty($films)) {
-        return '<p>No movies found in the database.</p>';
-    }
-
-    // Group films by first letter
-    $grouped_films = array();
-    foreach ($films as $film) {
-        $first_letter = strtoupper(substr($film['title'], 0, 1));
-
-        // Handle numbers and special characters
-        if (is_numeric($first_letter)) {
-            $first_letter = '#';
-        } elseif (!preg_match('/[A-Z]/', $first_letter)) {
-            $first_letter = '#';
-        }
-
-        if (!isset($grouped_films[$first_letter])) {
-            $grouped_films[$first_letter] = array();
-        }
-
-        $grouped_films[$first_letter][] = $film;
-    }
-
-    // Sort groups by key
-    ksort($grouped_films);
-
-    ob_start();
-    ?>
-    <div class="fwd-movies-list-container">
-        <style>
-            .fwd-movies-list-container {
-                max-width: 1200px;
-                margin: 0 auto;
-            }
-            .fwd-movies-letter-group {
-                margin-bottom: 3rem;
-            }
-            .fwd-movies-letter-header {
-                font-size: 2rem;
-                font-weight: 700;
-                color: var(--fwd-primary, #2c3e50);
-                border-bottom: 3px solid var(--fwd-primary, #2c3e50);
-                padding-bottom: 0.5rem;
-                margin-bottom: 1.5rem;
-            }
-            .fwd-movies-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-                gap: 0.75rem;
-            }
-            .fwd-movie-item {
-                padding: 0.5rem;
-            }
-            .fwd-movie-link {
-                color: var(--fwd-text, #333);
-                text-decoration: none;
-                transition: color 0.2s ease;
-            }
-            .fwd-movie-link:hover {
-                color: var(--fwd-primary, #2c3e50);
-                text-decoration: underline;
-            }
-            .fwd-movie-year {
-                color: var(--fwd-text-light, #666);
-                font-size: 0.9em;
-            }
-
-            @media (max-width: 768px) {
-                .fwd-movies-grid {
-                    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                }
-                .fwd-movies-letter-header {
-                    font-size: 1.5rem;
-                }
-            }
-        </style>
-
-        <?php foreach ($grouped_films as $letter => $films_in_group): ?>
-            <div class="fwd-movies-letter-group">
-                <h2 class="fwd-movies-letter-header"><?php echo esc_html($letter); ?></h2>
-                <div class="fwd-movies-grid">
-                    <?php foreach ($films_in_group as $film):
-                        $search_url = add_query_arg(
-                            array(
-                                'type' => 'film',
-                                'q' => urlencode($film['title'])
-                            ),
-                            $atts['base_url']
-                        );
+    <div class="fwd-recently-added-container">
+        <div class="fwd-recently-added-grid">
+            <div class="fwd-recently-added-column">
+                <h3>Recently Added Watches</h3>
+                <ul class="fwd-recently-added-list">
+                    <?php foreach ($recent_watches as $watch): 
+                        $watch_url = add_query_arg(array('type' => 'all', 'q' => $watch['brand_name']), $base_url);
                     ?>
-                        <div class="fwd-movie-item">
-                            <a href="<?php echo esc_url($search_url); ?>" class="fwd-movie-link">
-                                <?php echo esc_html($film['title']); ?>
-                                <span class="fwd-movie-year">(<?php echo esc_html($film['year']); ?>)</span>
-                            </a>
-                        </div>
+                    <li><a href="<?php echo esc_url($watch_url); ?>"><?php echo esc_html($watch['brand_name'] . ' ' . $watch['model_reference']); ?></a></li>
                     <?php endforeach; ?>
-                </div>
+                </ul>
             </div>
-        <?php endforeach; ?>
+            
+            <div class="fwd-recently-added-column">
+                <h3>Recently Added Actors</h3>
+                <ul class="fwd-recently-added-list">
+                    <?php foreach ($recent_actors as $actor): 
+                        $actor_url = add_query_arg(array('type' => 'all', 'q' => $actor['actor_name']), $base_url);
+                    ?>
+                    <li><a href="<?php echo esc_url($actor_url); ?>"><?php echo esc_html($actor['actor_name']); ?></a></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+            
+            <div class="fwd-recently-added-column">
+                <h3>Recently Added Movies</h3>
+                <ul class="fwd-recently-added-list">
+                    <?php foreach ($recent_films as $film): 
+                        $film_url = add_query_arg(array('type' => 'all', 'q' => $film['title']), $base_url);
+                    ?>
+                    <li><a href="<?php echo esc_url($film_url); ?>"><?php echo esc_html($film['title'] . ' (' . $film['year'] . ')'); ?></a></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        </div>
     </div>
     <?php
     return ob_get_clean();
 }
-add_shortcode('film_watch_movies_list', 'fwd_movies_list_shortcode');
+add_shortcode('film_watch_recently_added', 'fwd_recently_added_shortcode');

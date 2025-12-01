@@ -22,7 +22,6 @@
             $.ajax({
                 url: elevenlabsData.ajaxurl,
                 type: 'POST',
-                timeout: 300000, // 5 minutes
                 data: {
                     action: 'elevenlabs_generate_audio',
                     post_id: postId,
@@ -85,7 +84,6 @@
             $.ajax({
                 url: elevenlabsData.ajaxurl,
                 type: 'POST',
-                timeout: 300000, // 5 minutes
                 data: {
                     action: 'elevenlabs_generate_audio',
                     post_id: postId,

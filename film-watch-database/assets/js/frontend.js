@@ -38,6 +38,7 @@
 
     /**
      * Check URL parameters and perform search if present
+     * Enhanced to detect server-side rendered results
      */
     function checkUrlParameters() {
         const urlParams = new URLSearchParams(window.location.search);
@@ -47,14 +48,23 @@
         if (type && query) {
             const searchType = document.getElementById('fwd-search-type');
             const searchInput = document.getElementById('fwd-search-input');
+            const resultsContainer = document.getElementById('fwd-search-results');
 
             if (searchType && searchInput) {
-                // Set the form values
-                searchType.value = type;
+                // Set the form values (ignore type from URL, always use all)
                 searchInput.value = decodeURIComponent(query);
 
-                // Perform the search
-                performSearch(false); // Don't update URL since we're loading from URL
+                // Check if results are already rendered server-side (for SEO)
+                const container = document.querySelector('.fwd-search-container');
+                const hasServerResults = resultsContainer && resultsContainer.querySelector('.fwd-results-list');
+
+                if (hasServerResults) {
+                    // Results already rendered by PHP - no need for AJAX
+                    console.log('FWD: Using server-rendered results (SEO mode)');
+                } else {
+                    // No server results - perform AJAX search
+                    performSearch(false); // Don't update URL since we're loading from URL
+                }
             }
         }
     }
@@ -67,7 +77,7 @@
         const searchInput = document.getElementById('fwd-search-input');
 
         if (searchType && searchInput) {
-            searchType.value = searchState.type;
+            // Always use unified search
             searchInput.value = searchState.query;
             performSearch(false); // Don't update URL
         }
@@ -84,14 +94,7 @@
 
         if (!searchType || !searchInput || !resultsContainer) return;
 
-        // Check if AJAX variables are loaded
-        if (typeof fwdAjax === 'undefined') {
-            resultsContainer.innerHTML = '<div class="fwd-error">Plugin not properly loaded. Please refresh the page.</div>';
-            console.error('fwdAjax is not defined. Check that the script is enqueued correctly.');
-            return;
-        }
-
-        const queryType = searchType.value;
+        const queryType = "all"; // Always use unified search
         const searchTerm = searchInput.value.trim();
 
         if (!searchTerm) {
@@ -137,21 +140,7 @@
                 }
             },
             error: function(xhr, status, error) {
-                console.error('AJAX Error:', {xhr: xhr, status: status, error: error});
-                let errorMsg = 'Network error';
-                if (error) {
-                    errorMsg += ': ' + error;
-                } else if (status) {
-                    errorMsg += ': ' + status;
-                }
-                if (xhr.status) {
-                    errorMsg += ' (HTTP ' + xhr.status + ')';
-                }
-                if (xhr.responseText) {
-                    console.error('Response text:', xhr.responseText);
-                    errorMsg += '. Check browser console for details.';
-                }
-                resultsContainer.innerHTML = '<div class="fwd-error">' + errorMsg + '</div>';
+                resultsContainer.innerHTML = '<div class="fwd-error">Network error: ' + error + '</div>';
             },
             complete: function() {
                 searchBtn.disabled = false;
@@ -164,12 +153,31 @@
      * Display search results
      */
     function displayResults(data, queryType, container) {
+        // Hide recently added section when showing search results
+        const recentlyAdded = document.querySelector(".fwd-recently-added-container");
+        if (recentlyAdded) recentlyAdded.style.display = "none";
+        
+        // Handle unified search results
+        if (queryType === 'all') {
+            displayUnifiedResults(data, container);
+            return;
+        }
+
         if (data.count === 0) {
             container.innerHTML = '<div class="fwd-no-results">No results found.</div>';
             return;
         }
 
-        let html = '<div class="fwd-success">Found ' + data.count + ' result(s)</div>';
+        let html = '';
+        if (queryType === 'film' && data.film_count) {
+            var filmText = data.film_count === 1 ? 'film' : 'films';
+            var watchText = data.count === 1 ? 'watch' : 'watches';
+            html += '<div class="fwd-success">' + data.film_count + ' ' + filmText + ', ' + data.count + ' ' + watchText + '</div>';
+        } else if (queryType === 'brand' && data.film_count) {
+            var filmText = data.film_count === 1 ? 'film' : 'films';
+            var watchText = data.count === 1 ? 'watch' : 'watches';
+            html += '<div class="fwd-success">' + data.film_count + ' ' + filmText + ', ' + data.count + ' ' + watchText + '</div>';
+        }
         html += '<div class="fwd-results-list">';
 
         if (queryType === 'actor' && data.films) {
@@ -177,17 +185,65 @@
                 html += buildActorResultHTML(film, film.actor);
             });
         } else if (queryType === 'brand' && data.films) {
-            data.films.forEach(function(film) {
-                html += buildBrandResultHTML(film, data.brand);
+            // Brand results are now grouped by film
+            data.films.forEach(function(filmGroup) {
+                html += buildFilmGroupHTML(filmGroup);
             });
-        } else if (queryType === 'film' && data.watches) {
-            data.watches.forEach(function(watch) {
-                html += buildFilmResultHTML(watch);
+        } else if (queryType === 'film' && data.films) {
+            data.films.forEach(function(filmGroup) {
+                html += buildFilmGroupHTML(filmGroup);
             });
         }
 
         html += '</div>';
         container.innerHTML = html;
+
+        // Execute any scripts in the inserted HTML (needed for ReGallery)
+        executeScriptsInElement(container);
+
+        // Initialize ReGallery elements after scripts have run
+        setTimeout(initReGalleries, 100);
+    }
+
+    /**
+
+    /**
+     * Display unified search results organized by film only
+     * All searches return results grouped by film (film is the unique key)
+     */
+    function displayUnifiedResults(data, container) {
+        if (data.total_count === 0 || !data.films || data.films.length === 0) {
+            container.innerHTML = '<div class="fwd-no-results">No results found.</div>';
+            return;
+        }
+
+        let html = '';
+
+        // Only show films section - film is always the unique key
+        var filmCount = data.films.length;
+        var totalWatches = 0;
+        data.films.forEach(function(filmGroup) {
+            totalWatches += filmGroup.watches.length;
+        });
+
+        var filmText = filmCount === 1 ? 'film' : 'films';
+        var watchText = totalWatches === 1 ? 'watch' : 'watches';
+
+        html += '<div class="fwd-results-section">';
+        html += '<h3 class="fwd-section-title">' + filmCount + ' ' + filmText + ', ' + totalWatches + ' ' + watchText + '</h3>';
+        html += '<div class="fwd-results-list">';
+        data.films.forEach(function(filmGroup) {
+            html += buildFilmGroupHTML(filmGroup);
+        });
+        html += '</div></div>';
+
+        container.innerHTML = html;
+
+        // Execute any scripts in the inserted HTML (needed for ReGallery)
+        executeScriptsInElement(container);
+
+        // Initialize ReGallery elements after scripts have run
+        setTimeout(initReGalleries, 100);
     }
 
     /**
@@ -196,7 +252,10 @@
     function buildActorResultHTML(film, actorName) {
         let html = '<div class="fwd-entry">';
 
-        if (film.image_url) {
+        // Use pre-rendered gallery HTML if available (includes ReGallery)
+        if (film.gallery_html) {
+            html += film.gallery_html;
+        } else if (film.image_url) {
             html += `<figure>`;
             html += `<img src="${escapeHtml(film.image_url)}" alt="${escapeHtml(film.brand)} ${escapeHtml(film.model)}">`;
             if (film.image_caption) {
@@ -205,24 +264,22 @@
             html += `</figure>`;
         }
 
-        html += `<p><strong>${escapeHtml(actorName)}</strong> as <strong>${escapeHtml(film.character)}</strong> wears <strong class="fwd-watch">${escapeHtml(film.brand)} ${escapeHtml(film.model)}</strong> in <strong>${escapeHtml(film.title)}</strong> (${escapeHtml(film.year)}).`;
+        html += `<p>The <strong class="fwd-watch">${escapeHtml(film.brand)} ${escapeHtml(film.model)}</strong> appears in the ${escapeHtml(film.year)} film <strong>${escapeHtml(film.title)}</strong>, worn by <strong>${escapeHtml(actorName)}</strong> as <strong>${escapeHtml(film.character)}</strong>.`;
 
-        // Don't escape narrative - it's already sanitized from database
+        // Escape narrative for XSS protection
         if (film.narrative) {
-            html += ` ${film.narrative}`;
+            html += ` ${escapeHtml(film.narrative)}`;
         }
 
         html += '</p>';
 
-        // Add metadata footer
         if (film.confidence_level || film.source) {
-            html += '<p class="fwd-metadata" style="font-size: 0.9em; color: #666; margin-top: 0.5em;">';
+            html += '<p>';
             if (film.confidence_level) {
-                html += `<span class="fwd-confidence">Confidence score: ${escapeHtml(film.confidence_level)}</span>`;
+                html += `<em class="fwd-confidence">Confidence: ${escapeHtml(film.confidence_level)}</em>`;
             }
             if (film.source) {
-                if (film.confidence_level) html += ' | ';
-                html += `<a href="${escapeHtml(film.source)}" target="_blank" rel="noopener">Source ↗</a>`;
+                html += ` <a href="${escapeHtml(film.source)}" target="_blank" rel="noopener">Source ↗</a>`;
             }
             html += '</p>';
         }
@@ -246,24 +303,22 @@
             html += `</figure>`;
         }
 
-        html += `<p><strong>${escapeHtml(film.actor)}</strong> as <strong>${escapeHtml(film.character)}</strong> wears <strong class="fwd-watch">${escapeHtml(brandName)} ${escapeHtml(film.model)}</strong> in <strong>${escapeHtml(film.title)}</strong> (${escapeHtml(film.year)}).`;
+        html += `<p>The <strong class="fwd-watch">${escapeHtml(brandName)} ${escapeHtml(film.model)}</strong> appears in the ${escapeHtml(film.year)} film <strong>${escapeHtml(film.title)}</strong>, worn by <strong>${escapeHtml(film.actor)}</strong> as <strong>${escapeHtml(film.character)}</strong>.`;
 
-        // Don't escape narrative - it's already sanitized from database
+        // Escape narrative for XSS protection
         if (film.narrative) {
-            html += ` ${film.narrative}`;
+            html += ` ${escapeHtml(film.narrative)}`;
         }
 
         html += '</p>';
 
-        // Add metadata footer
         if (film.confidence_level || film.source) {
-            html += '<p class="fwd-metadata" style="font-size: 0.9em; color: #666; margin-top: 0.5em;">';
+            html += '<p>';
             if (film.confidence_level) {
-                html += `<span class="fwd-confidence">Confidence score: ${escapeHtml(film.confidence_level)}</span>`;
+                html += `<em class="fwd-confidence">Confidence: ${escapeHtml(film.confidence_level)}</em>`;
             }
             if (film.source) {
-                if (film.confidence_level) html += ' | ';
-                html += `<a href="${escapeHtml(film.source)}" target="_blank" rel="noopener">Source ↗</a>`;
+                html += ` <a href="${escapeHtml(film.source)}" target="_blank" rel="noopener">Source ↗</a>`;
             }
             html += '</p>';
         }
@@ -275,10 +330,39 @@
     /**
      * Build HTML for film search result (natural language)
      */
+    /**
+     * Build HTML for grouped film results (film with multiple watches)
+     */
+    function buildFilmGroupHTML(filmGroup) {
+        let html = '<div class="fwd-film-group">';
+        
+        // Film header
+        html += '<h3 class="fwd-film-title">';
+        html += escapeHtml(filmGroup.title) + ' (' + escapeHtml(filmGroup.year) + ') - ';
+        html += filmGroup.watches.length + ' watch' + (filmGroup.watches.length !== 1 ? 'es' : '');
+        html += '</h3>';
+        
+        html += '<div class="fwd-film-watches">';
+        
+        // Each watch in this film
+        filmGroup.watches.forEach(function(watch) {
+            html += buildFilmResultHTML(watch);
+        });
+        
+        html += '</div>'; // fwd-film-watches
+        html += '</div>'; // fwd-film-group
+        
+        return html;
+    }
+
+
     function buildFilmResultHTML(watch) {
         let html = '<div class="fwd-entry">';
 
-        if (watch.image_url) {
+        // Use pre-rendered gallery HTML if available (includes ReGallery)
+        if (watch.gallery_html) {
+            html += watch.gallery_html;
+        } else if (watch.image_url) {
             html += `<figure>`;
             html += `<img src="${escapeHtml(watch.image_url)}" alt="${escapeHtml(watch.brand)} ${escapeHtml(watch.model)}">`;
             if (watch.image_caption) {
@@ -287,40 +371,28 @@
             html += `</figure>`;
         }
 
-        html += `<p><strong>${escapeHtml(watch.actor)}</strong> as <strong>${escapeHtml(watch.character)}</strong> wears <strong class="fwd-watch">${escapeHtml(watch.brand)} ${escapeHtml(watch.model)}</strong> in <strong>${escapeHtml(watch.title)}</strong> (${escapeHtml(watch.year)}).`;
+        html += `<p>The <strong class="fwd-watch">${escapeHtml(watch.brand)} ${escapeHtml(watch.model)}</strong> appears in the ${escapeHtml(watch.year)} film <strong>${escapeHtml(watch.title)}</strong>, worn by <strong>${escapeHtml(watch.actor)}</strong> as <strong>${escapeHtml(watch.character)}</strong>.`;
 
-        // Don't escape narrative - it's already sanitized from database
+        // Escape narrative for XSS protection
         if (watch.narrative) {
-            html += ` ${watch.narrative}`;
+            html += ` ${escapeHtml(watch.narrative)}`;
         }
 
         html += '</p>';
 
-        // Add metadata footer
         if (watch.confidence_level || watch.source) {
-            html += '<p class="fwd-metadata" style="font-size: 0.9em; color: #666; margin-top: 0.5em;">';
+            html += '<p>';
             if (watch.confidence_level) {
-                html += `<span class="fwd-confidence">Confidence score: ${escapeHtml(watch.confidence_level)}</span>`;
+                html += `<em class="fwd-confidence">Confidence: ${escapeHtml(watch.confidence_level)}</em>`;
             }
             if (watch.source) {
-                if (watch.confidence_level) html += ' | ';
-                html += `<a href="${escapeHtml(watch.source)}" target="_blank" rel="noopener">Source ↗</a>`;
+                html += ` <a href="${escapeHtml(watch.source)}" target="_blank" rel="noopener">Source ↗</a>`;
             }
             html += '</p>';
         }
 
         html += '</div>';
         return html;
-    }
-
-    /**
-     * Escape HTML to prevent XSS
-     */
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     /**
@@ -343,6 +415,8 @@
     function initMediaUploader() {
         const uploadBtn = document.getElementById('fwd-upload-image-btn');
         const imageUrlInput = document.getElementById('fwd-image-url');
+        const galleryIdsInput = document.getElementById('fwd-gallery-ids');
+        const galleryPreview = document.getElementById('fwd-gallery-preview');
 
         if (!uploadBtn || !imageUrlInput) return;
 
@@ -365,22 +439,108 @@
 
             // Extend the wp.media object
             mediaUploader = wp.media({
-                title: 'Select Watch Image',
+                title: 'Select Watch Images (Gallery)',
                 button: {
-                    text: 'Use this image'
+                    text: 'Use these images'
                 },
-                multiple: false
+                multiple: true
             });
 
-            // When an image is selected, run a callback
+            // When images are selected, run a callback
             mediaUploader.on('select', function() {
-                const attachment = mediaUploader.state().get('selection').first().toJSON();
-                imageUrlInput.value = attachment.url;
+                const attachments = mediaUploader.state().get('selection').toJSON();
+
+                // Extract attachment IDs and URLs
+                const attachmentIds = attachments.map(att => att.id);
+                const attachmentUrls = attachments.map(att => att.url);
+
+                // Store IDs in hidden field as JSON array
+                if (galleryIdsInput) {
+                    galleryIdsInput.value = JSON.stringify(attachmentIds);
+                }
+
+                // For backwards compatibility, set first image URL in the image_url field
+                if (attachments.length > 0) {
+                    imageUrlInput.value = attachments[0].url;
+                }
+
+                // Update preview display
+                if (galleryPreview) {
+                    updateGalleryPreview(attachments);
+                }
             });
 
             // Open the uploader dialog
             mediaUploader.open();
         });
+    }
+
+    /**
+     * Update gallery preview with selected images
+     */
+    function updateGalleryPreview(attachments) {
+        const galleryPreview = document.getElementById('fwd-gallery-preview');
+        if (!galleryPreview) return;
+
+        if (attachments.length === 0) {
+            galleryPreview.innerHTML = '<p class="description">No images selected</p>';
+            return;
+        }
+
+        let previewHTML = '<div class="fwd-gallery-thumbnails">';
+
+        attachments.forEach((attachment, index) => {
+            const thumbUrl = attachment.sizes && attachment.sizes.thumbnail
+                ? attachment.sizes.thumbnail.url
+                : attachment.url;
+
+            previewHTML += `
+                <div class="fwd-gallery-thumb">
+                    <img src="${thumbUrl}" alt="Gallery image ${index + 1}">
+                    <button type="button" class="fwd-remove-thumb" data-attachment-id="${attachment.id}">×</button>
+                </div>
+            `;
+        });
+
+        previewHTML += '</div>';
+        previewHTML += `<p class="description">${attachments.length} image(s) selected</p>`;
+
+        galleryPreview.innerHTML = previewHTML;
+
+        // Add remove handlers
+        galleryPreview.querySelectorAll('.fwd-remove-thumb').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                removeGalleryImage(parseInt(this.dataset.attachmentId));
+            });
+        });
+    }
+
+    /**
+     * Remove an image from the gallery selection
+     */
+    function removeGalleryImage(attachmentId) {
+        const galleryIdsInput = document.getElementById('fwd-gallery-ids');
+        if (!galleryIdsInput || !galleryIdsInput.value) return;
+
+        try {
+            let ids = JSON.parse(galleryIdsInput.value);
+            ids = ids.filter(id => id !== attachmentId);
+            galleryIdsInput.value = JSON.stringify(ids);
+
+            // Refresh preview - we need to reconstruct attachments array
+            // For simplicity, just show count
+            const galleryPreview = document.getElementById('fwd-gallery-preview');
+            if (galleryPreview) {
+                if (ids.length === 0) {
+                    galleryPreview.innerHTML = '<p class="description">No images selected</p>';
+                } else {
+                    galleryPreview.innerHTML = `<p class="description">${ids.length} image(s) selected. Click "Select Images" to modify.</p>`;
+                }
+            }
+        } catch (e) {
+            console.error('Error removing gallery image:', e);
+        }
     }
 
     /**
@@ -407,7 +567,7 @@
                                     <tr><td><strong>Film:</strong></td><td>${escapeHtml(existing.title || '')} (${escapeHtml(existing.year || '')})</td></tr>
                                     <tr><td><strong>Narrative:</strong></td><td>${escapeHtml(existing.narrative || 'None')}</td></tr>
                                     <tr><td><strong>Image:</strong></td><td>${existing.image_url ? 'Yes' : 'No'}</td></tr>
-                                    <tr><td><strong>Confidence score: </strong></td><td>${existing.confidence_level ? escapeHtml(existing.confidence_level) : 'None'}</td></tr>
+                                    <tr><td><strong>Confidence:</strong></td><td>${existing.confidence_level ? escapeHtml(existing.confidence_level) : 'None'}</td></tr>
                                 </table>
                             </div>
                             <div class="fwd-comparison-column">
@@ -419,7 +579,7 @@
                                     <tr><td><strong>Film:</strong></td><td>${escapeHtml(newData.title || '')} (${escapeHtml(newData.year || '')})</td></tr>
                                     <tr><td><strong>Narrative:</strong></td><td>${escapeHtml(newData.narrative || 'None')}</td></tr>
                                     <tr><td><strong>Image:</strong></td><td>${newData.image_url ? 'Yes' : 'No'}</td></tr>
-                                    <tr><td><strong>Confidence score: </strong></td><td>${newData.confidence_level ? escapeHtml(newData.confidence_level) : 'None'}</td></tr>
+                                    <tr><td><strong>Confidence:</strong></td><td>${newData.confidence_level ? escapeHtml(newData.confidence_level) : 'None'}</td></tr>
                                 </table>
                             </div>
                         </div>
@@ -462,8 +622,8 @@
         const entryText = document.getElementById('fwd-entry-text');
         const narrative = document.getElementById('fwd-narrative');
         const imageUrl = document.getElementById('fwd-image-url');
+        const galleryIds = document.getElementById('fwd-gallery-ids');
         const confidence = document.getElementById('fwd-confidence');
-        const sourceUrl = document.getElementById('fwd-source-url');
         const resultDiv = document.getElementById('fwd-add-result');
         const addBtn = document.getElementById('fwd-add-btn');
 
@@ -472,8 +632,8 @@
         const entryValue = entryText.value.trim();
         const narrativeValue = narrative.value.trim();
         const imageUrlValue = imageUrl ? imageUrl.value.trim() : '';
+        const galleryIdsValue = galleryIds ? galleryIds.value.trim() : '';
         const confidenceValue = confidence ? confidence.value.trim() : '';
-        const sourceUrlValue = sourceUrl ? sourceUrl.value.trim() : '';
 
         if (!entryValue) {
             showResult(resultDiv, 'fwd-error', 'Please enter an entry text.');
@@ -495,8 +655,8 @@
                 entry_text: entryValue,
                 narrative: narrativeValue,
                 image_url: imageUrlValue,
+                gallery_ids: galleryIdsValue,
                 confidence_level: confidenceValue,
-                source_url: sourceUrlValue,
                 force_overwrite: forceOverwrite ? 'true' : 'false'
             },
             success: function(response) {
@@ -505,8 +665,14 @@
                     entryText.value = '';
                     narrative.value = '';
                     if (imageUrl) imageUrl.value = '';
+                    if (galleryIds) galleryIds.value = '';
                     if (confidence) confidence.value = '';
-                    if (sourceUrl) sourceUrl.value = '';
+
+                    // Clear gallery preview
+                    const galleryPreview = document.getElementById('fwd-gallery-preview');
+                    if (galleryPreview) {
+                        galleryPreview.innerHTML = '<p class="description">No images selected</p>';
+                    }
                 } else if (response.data && response.data.is_duplicate) {
                     // Show duplicate comparison modal
                     showDuplicateModal(
@@ -525,8 +691,8 @@
                     );
                     return; // Don't reset button state yet
                 } else {
-                    const errorMsg = response.data.error || 'Unknown error occurred';
-                    showResult(resultDiv, 'fwd-error', formatErrorMessage(errorMsg));
+                    showResult(resultDiv, 'fwd-error', 'Error: ' +
+                        (response.data.error || 'Unknown error occurred'));
                 }
             },
             error: function(xhr, status, error) {
@@ -585,9 +751,7 @@
         // Initialize quick entry button
         const quickAddBtn = document.getElementById('fwd-quick-add-btn');
         if (quickAddBtn) {
-            quickAddBtn.addEventListener('click', function() {
-                addQuickEntry(false);
-            });
+            quickAddBtn.addEventListener('click', addQuickEntry);
         }
 
         // Initialize CSV upload button
@@ -651,8 +815,8 @@
                     );
                     return; // Don't reset button state yet
                 } else {
-                    const errorMsg = response.data.error || 'Unknown error occurred';
-                    showResult(resultDiv, 'fwd-error', formatErrorMessage(errorMsg));
+                    showResult(resultDiv, 'fwd-error', 'Error: ' +
+                        (response.data.error || 'Unknown error occurred'));
                 }
             },
             error: function(xhr, status, error) {
@@ -736,51 +900,6 @@
     }
 
     /**
-     * Format error message with helpful context
-     * @param {string} error - The error message
-     * @return {string} - Formatted HTML error message
-     */
-    function formatErrorMessage(error) {
-        let message = '';
-        let helpText = '';
-
-        // Parse validation errors
-        if (error.includes('Validation failed:')) {
-            const errors = error.replace('Validation failed: ', '').split('; ');
-            message = '<strong>Please fix the following issues:</strong><ul>';
-            errors.forEach(function(err) {
-                message += '<li>' + FWD_Utils.escapeHtml(err) + '</li>';
-            });
-            message += '</ul>';
-        }
-        // Handle rate limit errors
-        else if (error.includes('rate limit')) {
-            message = '<strong>Too many requests</strong><br>' + FWD_Utils.escapeHtml(error);
-            helpText = 'Please wait a moment before trying again.';
-        }
-        // Handle API key errors
-        else if (error.includes('API key')) {
-            message = '<strong>Configuration Issue</strong><br>' + FWD_Utils.escapeHtml(error);
-            helpText = 'Please contact your site administrator.';
-        }
-        // Handle parsing errors
-        else if (error.includes('Could not parse')) {
-            message = '<strong>Unable to understand entry</strong><br>' + FWD_Utils.escapeHtml(error);
-            helpText = 'Try using the Quick Entry format: Actor|Character|Brand|Model|Title|Year';
-        }
-        // Generic error
-        else {
-            message = FWD_Utils.escapeHtml(error);
-        }
-
-        if (helpText) {
-            message += '<div class="fwd-help-text">' + helpText + '</div>';
-        }
-
-        return message;
-    }
-
-    /**
      * Initialize on document ready
      */
     $(document).ready(function() {
@@ -789,4 +908,79 @@
         initTabs();
     });
 
+
+    /**
+     * Execute script tags in dynamically inserted HTML
+     * Needed for ReGallery which uses inline scripts for React initialization
+     */
+    function executeScriptsInElement(element) {
+        const scripts = element.querySelectorAll('script');
+        scripts.forEach(function(oldScript) {
+            const newScript = document.createElement('script');
+
+            // Copy attributes
+            Array.from(oldScript.attributes).forEach(function(attr) {
+                newScript.setAttribute(attr.name, attr.value);
+            });
+
+            // Copy inline script content
+            newScript.textContent = oldScript.textContent;
+
+            // Replace old script with new one to execute it
+            oldScript.parentNode.replaceChild(newScript, oldScript);
+        });
+
+        // Trigger ReGallery re-initialization if available
+        if (typeof window.reacg_init === 'function') {
+            window.reacg_init();
+        }
+    }
+
 })(jQuery);
+
+/**
+ * Initialize any uninitialized ReGallery elements
+ * ReGallery uses React and only initializes on page load.
+ * This function manually triggers initialization for dynamically added galleries.
+ */
+function initReGalleries() {
+    // Find all reacg-gallery elements that haven't been initialized yet
+    const galleries = document.querySelectorAll('.reacg-gallery:not([data-initialized])');
+    
+    if (galleries.length === 0) return;
+    
+    // ReGallery stores its init function - we need to click the hidden loadApp button
+    // for each new gallery to trigger React initialization
+    galleries.forEach(function(gallery) {
+        const galleryId = gallery.id; // e.g., "reacg-root7567"
+        
+        // Mark as attempting initialization
+        gallery.setAttribute('data-initialized', 'pending');
+        
+        // Execute any inline scripts that set up reacg_data
+        const scripts = gallery.parentElement?.querySelectorAll('script');
+        scripts?.forEach(function(script) {
+            if (script.textContent.includes('reacg_data')) {
+                try {
+                    // Create and execute a new script with the same content
+                    const newScript = document.createElement('script');
+                    newScript.textContent = script.textContent;
+                    document.head.appendChild(newScript);
+                    document.head.removeChild(newScript);
+                } catch (e) {
+                    console.warn('FWD: Error executing reacg_data script', e);
+                }
+            }
+        });
+        
+        // Try to use ReGallery's internal init function
+        // The loadApp button triggers ie() which does createRoot().render()
+        const loadAppBtn = document.getElementById('reacg-loadApp');
+        if (loadAppBtn) {
+            // Set the data-id to target this specific gallery
+            loadAppBtn.setAttribute('data-id', galleryId);
+            loadAppBtn.click();
+            gallery.setAttribute('data-initialized', 'true');
+        }
+    });
+}

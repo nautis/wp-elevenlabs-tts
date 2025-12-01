@@ -789,22 +789,115 @@ function fwd_update_record($faw_id, $data) {
         }
 
         // Update the film_actor_watch record
+        $update_data = array(
+            'film_id' => $film_id,
+            'actor_id' => $actor_id,
+            'character_id' => $character_id,
+            'watch_id' => $watch_id,
+            'narrative_role' => $data['narrative'],
+            'image_url' => $data['image_url'],
+            'confidence_level' => $data['confidence_level'],
+            'source_url' => $data['source_url']
+        );
+
+        // Add gallery_ids if provided
+        if (isset($data['gallery_ids']) && !empty($data['gallery_ids'])) {
+            $update_data['gallery_ids'] = $data['gallery_ids'];
+        }
+        // Auto-create gallery_ids from image_url if not provided
+        elseif (!empty($data['image_url'])) {
+            $attachment_id = attachment_url_to_postid($data['image_url']);
+            // Try without -scaled suffix
+            if (!$attachment_id) {
+                $clean_url = preg_replace('/-scaled(\.[^.]+)$/', '$1', $data['image_url']);
+                $attachment_id = attachment_url_to_postid($clean_url);
+            }
+            if ($attachment_id) {
+                $update_data['gallery_ids'] = json_encode(array($attachment_id));
+            }
+        }
+
         $wpdb->update(
             $table_film_actor_watch,
-            array(
-                'film_id' => $film_id,
-                'actor_id' => $actor_id,
-                'character_id' => $character_id,
-                'watch_id' => $watch_id,
-                'narrative_role' => $data['narrative'],
-                'image_url' => $data['image_url'],
-                'confidence_level' => $data['confidence_level'],
-                'source_url' => $data['source_url']
-            ),
+            $update_data,
             array('faw_id' => $faw_id)
         );
 
+        // Create or update RegGallery post if gallery_ids is available
+        $gallery_ids_to_use = isset($update_data['gallery_ids']) ? $update_data['gallery_ids'] : null;
+        if ($gallery_ids_to_use) {
+            $gallery_ids_array = json_decode($gallery_ids_to_use, true);
+            if (is_array($gallery_ids_array) && !empty($gallery_ids_array) && function_exists('fwd_create_regallery_post')) {
+                // Get existing regallery_id from database
+                $existing_entry = $wpdb->get_row($wpdb->prepare(
+                    "SELECT regallery_id FROM {$table_film_actor_watch} WHERE faw_id = %d",
+                    $faw_id
+                ), ARRAY_A);
+
+                $existing_regallery_id = !empty($existing_entry['regallery_id']) ? $existing_entry['regallery_id'] : null;
+
+                // Prepare entry data for RegGallery post creation
+                $entry_data = array(
+                    'brand' => $data['brand'],
+                    'model' => $data['model'],
+                    'title' => $data['film'],
+                    'year' => $data['year'],
+                    'actor' => $data['actor']
+                );
+
+                // Create or update RegGallery post
+                $regallery_id = fwd_create_regallery_post($gallery_ids_array, $entry_data, $existing_regallery_id);
+
+                if ($regallery_id) {
+                    // Update the entry with regallery_id
+                    $wpdb->update(
+                        $table_film_actor_watch,
+                        array('regallery_id' => $regallery_id),
+                        array('faw_id' => $faw_id)
+                    );
+
+                    // Create wp_options cache entry
+                    $correct_options = file_get_contents('/tmp/correct-regallery-options.json');
+                    if ($correct_options) {
+                        update_option('reacg_options' . $regallery_id, $correct_options, false);
+                    }
+
+                    error_log("FWD Admin: Created/updated RegGallery post #{$regallery_id} for faw_id {$faw_id}");
+                }
+            }
+        }
+
         $wpdb->query('COMMIT');
+
+        // Update the search index table to reflect changes
+        $table_search_index = $wpdb->prefix . 'fwd_search_index';
+        $search_update_data = array(
+            'film_title' => $data['film'],
+            'film_year' => $data['year'],
+            'actor_name' => $data['actor'],
+            'character_name' => $data['character'],
+            'brand_name' => $data['brand'],
+            'model_reference' => $data['model'],
+            'narrative_role' => $data['narrative'],
+            'image_url' => $data['image_url'],
+            'confidence_level' => $data['confidence_level'],
+            'source_url' => $data['source_url']
+        );
+
+        // Add regallery_id to search index if it was created
+        if (isset($regallery_id) && $regallery_id) {
+            $search_update_data['regallery_id'] = $regallery_id;
+        }
+
+        $wpdb->update(
+            $table_search_index,
+            $search_update_data,
+            array('faw_id' => $faw_id)
+        );
+
+        // Clear all search caches to ensure updated data is shown
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_fwd_%' OR option_name LIKE '_transient_timeout_fwd_%'");
+
         return array('success' => true);
 
     } catch (Exception $e) {
@@ -819,8 +912,17 @@ function fwd_update_record($faw_id, $data) {
 function fwd_delete_record_by_id($faw_id) {
     global $wpdb;
     $table_film_actor_watch = $wpdb->prefix . 'fwd_film_actor_watch';
+    $table_search_index = $wpdb->prefix . 'fwd_search_index';
 
-    return $wpdb->delete($table_film_actor_watch, array('faw_id' => $faw_id), array('%d'));
+    // Delete from main table
+    $result = $wpdb->delete($table_film_actor_watch, array('faw_id' => $faw_id), array('%d'));
+
+    // Also delete from search index
+    if ($result) {
+        $wpdb->delete($table_search_index, array('faw_id' => $faw_id), array('%d'));
+    }
+
+    return $result;
 }
 
 /**
@@ -925,6 +1027,10 @@ function fwd_ajax_update_record() {
     }
 
     // Use wp_unslash to remove any magic quotes or unwanted slashes
+    $image_url_raw = wp_unslash($_POST['image_url']);
+    $gallery_ids_raw = isset($_POST['gallery_ids']) ? wp_unslash($_POST['gallery_ids']) : '';
+    $source_url_raw = wp_unslash($_POST['source_url']);
+
     $data = array(
         'film' => sanitize_text_field(wp_unslash($_POST['film'])),
         'year' => intval($_POST['year']),
@@ -932,10 +1038,11 @@ function fwd_ajax_update_record() {
         'character' => sanitize_text_field(wp_unslash($_POST['character'])),
         'brand' => sanitize_text_field(wp_unslash($_POST['brand'])),
         'model' => sanitize_text_field(wp_unslash($_POST['model'])),
-        'narrative' => sanitize_textarea_field(wp_unslash($_POST['narrative'])),
-        'image_url' => esc_url_raw(wp_unslash($_POST['image_url'])),
+        'narrative' => wp_kses_post(wp_unslash($_POST['narrative'])),
+        'image_url' => empty($image_url_raw) ? '' : esc_url_raw($image_url_raw),
+        'gallery_ids' => sanitize_text_field($gallery_ids_raw),
         'confidence_level' => sanitize_textarea_field(wp_unslash($_POST['confidence_level'])),
-        'source_url' => esc_url_raw(wp_unslash($_POST['source_url']))
+        'source_url' => empty($source_url_raw) ? '' : esc_url_raw($source_url_raw)
     );
 
     $result = fwd_update_record($faw_id, $data);
@@ -1000,12 +1107,17 @@ function fwd_settings_page() {
 
     // Handle AI settings save
     if (isset($_POST['fwd_save_ai_settings']) && check_admin_referer('fwd_ai_settings_action', 'fwd_ai_settings_nonce')) {
-        $api_key = sanitize_text_field($_POST['fwd_claude_api_key']);
         $threshold = floatval($_POST['fwd_ai_confidence_threshold']);
         $threshold = max(0.0, min(1.0, $threshold)); // Clamp between 0 and 1
 
-        update_option('fwd_claude_api_key', $api_key);
+        // Only save API key if not defined as constant
+        if (!defined('FWD_CLAUDE_API_KEY')) {
+            $api_key = sanitize_text_field($_POST['fwd_claude_api_key']);
+            update_option('fwd_claude_api_key', $api_key);
+        }
+
         update_option('fwd_ai_confidence_threshold', $threshold);
+
 
         echo '<div class="notice notice-success is-dismissible"><p>✓ AI settings saved.</p></div>';
     }
@@ -1022,6 +1134,13 @@ function fwd_settings_page() {
         update_option('fwd_tmdb_cache_hours', $tmdb_cache_hours);
 
         echo '<div class="notice notice-success is-dismissible"><p>✓ TMDB API settings saved.</p></div>';
+    }
+
+    // Handle rebuild search index
+    if (isset($_POST['fwd_rebuild_index']) && check_admin_referer('fwd_rebuild_index_action', 'fwd_rebuild_index_nonce')) {
+        $search_service = new FWD_Search_Service();
+        $search_service->rebuild_index();
+        echo '<div class="notice notice-success is-dismissible"><p>✓ Search index rebuilt successfully.</p></div>';
     }
 
     // Handle cleanup action
@@ -1139,22 +1258,49 @@ function fwd_settings_page() {
                     <tr>
                         <th scope="row"><label for="fwd_claude_api_key">Claude API Key</label></th>
                         <td>
-                            <input type="password" id="fwd_claude_api_key" name="fwd_claude_api_key"
-                                   value="<?php echo esc_attr($api_key); ?>"
-                                   class="regular-text"
-                                   placeholder="sk-ant-api03-...">
-                            <p class="description">
-                                Get your API key from <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a>
-                                (free tier available, ~$5 for thousands of parses)
-                                <?php if (!empty($api_key)): ?>
-                                    <br><span style="color: #46b450;">✓ API key configured</span>
-                                <?php endif; ?>
-                            </p>
+                            <?php if (defined('FWD_CLAUDE_API_KEY')): ?>
+                                <input type="password" id="fwd_claude_api_key" name="fwd_claude_api_key"
+                                       value="<?php echo esc_attr(FWD_CLAUDE_API_KEY); ?>"
+                                       class="regular-text"
+                                       disabled
+                                       placeholder="sk-ant-api03-...">
+                                <p class="description" style="color: #46b450;">
+                                    <strong>✓ API key configured via FWD_CLAUDE_API_KEY constant (read-only)</strong><br>
+                                    For security, this key is defined in wp-config.php and cannot be changed here.
+                                </p>
+                            <?php else: ?>
+                                <input type="password" id="fwd_claude_api_key" name="fwd_claude_api_key"
+                                       value="<?php echo esc_attr($api_key); ?>"
+                                       class="regular-text"
+                                       placeholder="sk-ant-api03-...">
+                                <p class="description">
+                                    Get your API key from <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a>
+                                    (free tier available, ~$5 for thousands of parses)
+                                    <?php if (!empty($api_key)): ?>
+                                        <br><span style="color: #46b450;">✓ API key configured</span>
+                                    <?php endif; ?>
+                                    <br><br>
+                                    <strong>Security Best Practice:</strong> For production sites, store API keys in wp-config.php instead of the database:<br>
+                                    <code>define('FWD_CLAUDE_API_KEY', 'sk-ant-api03-...');</code><br>
+                                    This prevents keys from being exposed in database backups or accessed via SQL injection.
+                                </p>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="fwd_ai_confidence_threshold">Confidence Threshold</label></th>
                         <td>
+                            <input type="range" id="fwd_ai_confidence_threshold" name="fwd_ai_confidence_threshold"
+                                   min="0" max="1" step="0.1"
+                                   value="<?php echo esc_attr($threshold); ?>"
+                                   oninput="this.nextElementSibling.textContent = this.value">
+                            <span style="display: inline-block; width: 40px; text-align: center; font-weight: bold;"><?php echo esc_html($threshold); ?></span>
+                            <p class="description">
+                                If regex confidence is below this threshold, AI will be used.
+                                <strong>0.7 recommended</strong> (lower = use AI more often)
+                            </p>
+                        </td>
+                    </tr>
                             <input type="range" id="fwd_ai_confidence_threshold" name="fwd_ai_confidence_threshold"
                                    min="0" max="1" step="0.1"
                                    value="<?php echo esc_attr($threshold); ?>"
@@ -1433,15 +1579,25 @@ function fwd_settings_page() {
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="fwd-image-url">Image URL (optional):</label></th>
+                        <th scope="row"><label for="fwd-image-url">Gallery Images (optional):</label></th>
                         <td>
                             <input
                                 type="url"
                                 id="fwd-image-url"
                                 class="regular-text"
                                 placeholder="https://example.com/watch-image.jpg"
+                                style="display:none;"
                             >
-                            <button type="button" id="fwd-upload-image-btn" class="button">Upload Image</button>
+                            <input
+                                type="hidden"
+                                id="fwd-gallery-ids"
+                                name="gallery_ids"
+                                value=""
+                            >
+                            <button type="button" id="fwd-upload-image-btn" class="button">Select Images</button>
+                            <div id="fwd-gallery-preview" style="margin-top: 10px;">
+                                <p class="description">No images selected</p>
+                            </div>
                         </td>
                     </tr>
                     <tr>
@@ -1851,7 +2007,7 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
             </div>
 
             <!-- Edit Modal -->
-            <div id="fwd-edit-modal" style="display: none; position: fixed; z-index: 999999; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5);">
+            <div id="fwd-edit-modal" style="display: none; position: fixed; z-index: 100000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5);">
                 <div style="background-color: #fff; margin: 5% auto; padding: 0; border: 1px solid #888; width: 80%; max-width: 800px; border-radius: 4px;">
                     <div style="padding: 20px; border-bottom: 1px solid #ddd; background: #f9f9f9;">
                         <h2 style="margin: 0;">Edit Record <span id="fwd-edit-record-id"></span></h2>
@@ -1891,8 +2047,15 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
                                     <td><textarea id="edit-narrative" name="narrative" class="large-text" rows="3"></textarea></td>
                                 </tr>
                                 <tr>
-                                    <th scope="row"><label for="edit-image-url">Image URL:</label></th>
-                                    <td><input type="url" id="edit-image-url" name="image_url" class="regular-text"></td>
+                                    <th scope="row"><label for="edit-image-url">Gallery Images:</label></th>
+                                    <td>
+                                        <input type="url" id="edit-image-url" name="image_url" class="regular-text" style="display:none;">
+                                        <input type="hidden" id="edit-gallery-ids" name="gallery_ids" value="">
+                                        <button type="button" id="edit-upload-image-btn" class="button">Select Images</button>
+                                        <div id="edit-gallery-preview" style="margin-top: 10px;">
+                                            <p class="description">No images selected</p>
+                                        </div>
+                                    </td>
                                 </tr>
                                 <tr>
                                     <th scope="row"><label for="edit-confidence">Confidence Level:</label></th>
@@ -2095,8 +2258,25 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
                             $('#edit-model').val(record.model);
                             $('#edit-narrative').val(record.narrative || '');
                             $('#edit-image-url').val(record.image_url || '');
+                            $('#edit-gallery-ids').val(record.gallery_ids || '');
                             $('#edit-confidence').val(record.confidence_level || '');
                             $('#edit-source-url').val(record.source_url || '');
+
+                            // Update gallery preview
+                            if (record.gallery_ids) {
+                                try {
+                                    var galleryIds = JSON.parse(record.gallery_ids);
+                                    if (galleryIds.length > 0) {
+                                        $('#edit-gallery-preview').html('<p class="description">' + galleryIds.length + ' image(s) selected. Click "Select Images" to modify.</p>');
+                                    } else {
+                                        $('#edit-gallery-preview').html('<p class="description">No images selected</p>');
+                                    }
+                                } catch(e) {
+                                    $('#edit-gallery-preview').html('<p class="description">No images selected</p>');
+                                }
+                            } else {
+                                $('#edit-gallery-preview').html('<p class="description">No images selected</p>');
+                            }
 
                             $('#fwd-edit-modal').show();
                         } else {
@@ -2124,6 +2304,7 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
                         model: $('#edit-model').val(),
                         narrative: $('#edit-narrative').val(),
                         image_url: $('#edit-image-url').val(),
+                        gallery_ids: $('#edit-gallery-ids').val(),
                         confidence_level: $('#edit-confidence').val(),
                         source_url: $('#edit-source-url').val()
                     };
@@ -2166,6 +2347,71 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
                     if ($('#fwd-records-tbody tr').length === 1 && $('#fwd-records-tbody td').text().includes('Loading records...')) {
                         loadRecords(1, '');
                     }
+                });
+
+                // Initialize WordPress media uploader for edit modal
+                var editMediaUploader;
+                $('#edit-upload-image-btn').on('click', function(e) {
+                    e.preventDefault();
+
+                    // Recreate the media uploader each time to ensure fresh state
+                    editMediaUploader = wp.media({
+                        title: 'Select Watch Images (Gallery)',
+                        button: {
+                            text: 'Use these images'
+                        },
+                        multiple: true,
+                        library: {
+                            type: 'image'
+                        }
+                    });
+
+                    // Try to restore previously selected images
+                    editMediaUploader.on('open', function() {
+                        var selection = editMediaUploader.state().get('selection');
+                        var currentIds = $('#edit-gallery-ids').val();
+
+                        if (currentIds) {
+                            try {
+                                var ids = JSON.parse(currentIds);
+                                ids.forEach(function(id) {
+                                    var attachment = wp.media.attachment(id);
+                                    attachment.fetch();
+                                    selection.add(attachment ? [attachment] : []);
+                                });
+                            } catch(e) {
+                                console.log('Error restoring selection:', e);
+                            }
+                        }
+                    });
+
+                    editMediaUploader.on('select', function() {
+                        var attachments = editMediaUploader.state().get('selection').toJSON();
+                        var attachmentIds = attachments.map(function(att) { return att.id; });
+
+                        console.log('Selected attachment IDs:', attachmentIds);
+
+                        // Store IDs in hidden field
+                        $('#edit-gallery-ids').val(JSON.stringify(attachmentIds));
+
+                        // Set first image URL for backwards compatibility
+                        if (attachments.length > 0) {
+                            $('#edit-image-url').val(attachments[0].url);
+                        }
+
+                        // Update preview with thumbnails
+                        var previewHtml = '<div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px;">';
+                        attachments.forEach(function(att) {
+                            var thumbUrl = att.sizes && att.sizes.thumbnail ? att.sizes.thumbnail.url : att.url;
+                            previewHtml += '<img src="' + thumbUrl + '" style="width: 75px; height: 75px; object-fit: cover; border: 1px solid #ddd;">';
+                        });
+                        previewHtml += '</div>';
+                        previewHtml += '<p class="description">' + attachments.length + ' image(s) selected</p>';
+
+                        $('#edit-gallery-preview').html(previewHtml);
+                    });
+
+                    editMediaUploader.open();
                 });
             });
             </script>
@@ -2246,6 +2492,17 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
             <form method="post" style="margin: 10px 0;">
                 <?php wp_nonce_field('fwd_global_cleanup_action', 'fwd_global_cleanup_nonce'); ?>
                 <button type="submit" name="fwd_global_cleanup" class="button button-primary">Clean All Escaped Data Now</button>
+            </form>
+        </div>
+
+        <!-- Rebuild Search Index -->
+        <div style="background: #e7f5ff; padding: 20px; border-left: 4px solid #0073aa; margin: 20px 0;">
+            <h3 style="margin-top: 0;">Rebuild Search Index</h3>
+            <p>Rebuild the search index to ensure all entries are searchable. Run this if new entries aren't showing up in search results.</p>
+            <p><strong>This is safe to run.</strong> It will recreate the search index from the current database.</p>
+            <form method="post" style="margin: 10px 0;">
+                <?php wp_nonce_field('fwd_rebuild_index_action', 'fwd_rebuild_index_nonce'); ?>
+                <button type="submit" name="fwd_rebuild_index" class="button button-primary">Rebuild Search Index Now</button>
             </form>
         </div>
 
