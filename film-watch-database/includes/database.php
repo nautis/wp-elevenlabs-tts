@@ -1111,40 +1111,6 @@ class FWD_Database {
                         array('faw_id' => $existing_record['faw_id'])
                     );
 
-                    // Create or update RegGallery post if gallery_ids is available
-                    $gallery_ids_to_use = isset($update_data['gallery_ids']) ? $update_data['gallery_ids'] : null;
-                    if ($gallery_ids_to_use) {
-                        $gallery_ids_array = json_decode($gallery_ids_to_use, true);
-                        if (is_array($gallery_ids_array) && !empty($gallery_ids_array) && function_exists('fwd_create_regallery_post')) {
-                            $existing_regallery_id = isset($existing_record['regallery_id']) ? $existing_record['regallery_id'] : null;
-                            $regallery_id = fwd_create_regallery_post($gallery_ids_array, $data, $existing_regallery_id);
-                            if ($regallery_id) {
-                                $wpdb->update(
-                                    $this->table_film_actor_watch,
-                                    array('regallery_id' => $regallery_id),
-                                    array('faw_id' => $existing_record['faw_id'])
-                                );
-
-                                // Set correct gallery options (justified with captions)
-                                $correct_options = json_encode(array(
-                                    'title' => 'Default',
-                                    'template_id' => 0,
-                                    'templateType' => '',
-                                    'css' => '',
-                                    'custom_css' => '',
-                                    'type' => 'justified',
-                                    'justified' => array(
-                                        'showCaption' => true,
-                                        'captionSource' => 'caption',
-                                        'captionVisibility' => 'alwaysShown',
-                                        'captionPosition' => 'bottom'
-                                    )
-                                ));
-                                update_option('reacg_options' . $regallery_id, $correct_options, false);
-                            }
-                        }
-                    }
-
                     $wpdb->query('COMMIT');
 
                     // Update search index
@@ -1217,40 +1183,6 @@ class FWD_Database {
             $wpdb->insert($this->table_film_actor_watch, $insert_data);
 
             $faw_id = $wpdb->insert_id;
-
-            // Create RegGallery post if gallery_ids is available
-            $regallery_id = null;
-            $gallery_ids_to_use = isset($insert_data['gallery_ids']) ? $insert_data['gallery_ids'] : null;
-            if ($gallery_ids_to_use) {
-                $gallery_ids_array = json_decode($gallery_ids_to_use, true);
-                if (is_array($gallery_ids_array) && !empty($gallery_ids_array) && function_exists('fwd_create_regallery_post')) {
-                    $regallery_id = fwd_create_regallery_post($gallery_ids_array, $data);
-                    if ($regallery_id) {
-                        $wpdb->update(
-                            $this->table_film_actor_watch,
-                            array('regallery_id' => $regallery_id),
-                            array('faw_id' => $faw_id)
-                        );
-
-                        // Set correct gallery options (justified with captions)
-                        $correct_options = json_encode(array(
-                            'title' => 'Default',
-                            'template_id' => 0,
-                            'templateType' => '',
-                            'css' => '',
-                            'custom_css' => '',
-                            'type' => 'justified',
-                            'justified' => array(
-                                'showCaption' => true,
-                                'captionSource' => 'caption',
-                                'captionVisibility' => 'alwaysShown',
-                                'captionPosition' => 'bottom'
-                            )
-                        ));
-                        update_option('reacg_options' . $regallery_id, $correct_options, false);
-                    }
-                }
-            }
 
             $wpdb->query('COMMIT');
 

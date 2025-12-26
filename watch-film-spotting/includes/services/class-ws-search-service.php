@@ -42,10 +42,37 @@ class WS_Search_Service {
      */
     public static function browse_by_brand($brand_name, $args = []) {
         $args['user_id'] = get_current_user_id() ?: null;
-        
+
         return WS_Sighting_Repository::get_by_brand($brand_name, $args);
     }
-    
+
+    /**
+     * Browse by actor ID
+     */
+    public static function browse_by_actor_id($actor_id, $args = []) {
+        $args['user_id'] = get_current_user_id() ?: null;
+
+        return WS_Sighting_Repository::get_by_actor_id($actor_id, $args);
+    }
+
+    /**
+     * Browse by film ID
+     */
+    public static function browse_by_film_id($film_id, $args = []) {
+        $args['user_id'] = get_current_user_id() ?: null;
+
+        return WS_Sighting_Repository::get_by_film_id($film_id, $args);
+    }
+
+    /**
+     * Browse by brand ID
+     */
+    public static function browse_by_brand_id($brand_id, $args = []) {
+        $args['user_id'] = get_current_user_id() ?: null;
+
+        return WS_Sighting_Repository::get_by_brand_id($brand_id, $args);
+    }
+
     /**
      * Get recent sightings
      */

@@ -98,8 +98,17 @@ class WS_Shortcodes {
      */
     private static function render_browse_view($atts) {
         $type = sanitize_text_field($_GET['ws_browse']);
-        $value = isset($_GET['ws_value']) ? sanitize_text_field($_GET['ws_value']) : '';
         $page = isset($_GET['ws_page']) ? max(1, (int) $_GET['ws_page']) : 1;
+
+        // Get ID based on type
+        $id = 0;
+        if ($type === 'film' && isset($_GET['ws_film_id'])) {
+            $id = (int) $_GET['ws_film_id'];
+        } elseif ($type === 'actor' && isset($_GET['ws_actor_id'])) {
+            $id = (int) $_GET['ws_actor_id'];
+        } elseif ($type === 'brand' && isset($_GET['ws_brand_id'])) {
+            $id = (int) $_GET['ws_brand_id'];
+        }
 
         ob_start();
 
@@ -113,12 +122,26 @@ class WS_Shortcodes {
             'results' => null,
         ]);
 
-        if ($value) {
-            // Show results for specific value
-            $results = self::get_browse_results($type, $value, $page);
+        if ($id) {
+            // Show results for specific ID
+            $results = self::get_browse_results($type, $id, $page);
+
+            // Get display name from first result
+            $display_name = '';
+            if (!empty($results['sightings'])) {
+                $first = $results['sightings'][0];
+                if ($type === 'film') {
+                    $display_name = $first->film_title . ' (' . $first->film_year . ')';
+                } elseif ($type === 'actor') {
+                    $display_name = $first->actor_name;
+                } elseif ($type === 'brand') {
+                    $display_name = $first->brand_name;
+                }
+            }
+
             ws_get_template('browse-grid.php', [
                 'type' => $type,
-                'value' => $value,
+                'display_name' => $display_name,
                 'list' => null,
                 'results' => $results,
             ]);
@@ -127,7 +150,7 @@ class WS_Shortcodes {
             $list = self::get_browse_list($type);
             ws_get_template('browse-grid.php', [
                 'type' => $type,
-                'value' => '',
+                'display_name' => '',
                 'list' => $list,
                 'results' => null,
             ]);
@@ -172,16 +195,16 @@ class WS_Shortcodes {
     }
 
     /**
-     * Get browse results by type and value
+     * Get browse results by type and ID
      */
-    private static function get_browse_results($type, $value, $page) {
+    private static function get_browse_results($type, $id, $page) {
         switch ($type) {
             case 'actor':
-                return WS_Search_Service::browse_by_actor($value, ['page' => $page]);
+                return WS_Search_Service::browse_by_actor_id($id, ['page' => $page]);
             case 'film':
-                return WS_Search_Service::browse_by_film($value, ['page' => $page]);
+                return WS_Search_Service::browse_by_film_id($id, ['page' => $page]);
             case 'brand':
-                return WS_Search_Service::browse_by_brand($value, ['page' => $page]);
+                return WS_Search_Service::browse_by_brand_id($id, ['page' => $page]);
             default:
                 return ['sightings' => [], 'total' => 0, 'pages' => 0];
         }

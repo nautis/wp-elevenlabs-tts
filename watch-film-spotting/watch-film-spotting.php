@@ -194,5 +194,46 @@ function ws_table($table) {
     return $wpdb->prefix . $table;
 }
 
+// Get thumbnail URL from full image URL
+function ws_get_thumbnail_url($image_url, $width = 768) {
+    if (empty($image_url)) {
+        return $image_url;
+    }
+
+    // Parse the URL to get path and extension
+    $path_info = pathinfo(parse_url($image_url, PHP_URL_PATH));
+    $extension = $path_info['extension'] ?? '';
+    $filename = $path_info['filename'] ?? '';
+    $dirname = $path_info['dirname'] ?? '';
+
+    if (empty($extension) || empty($filename)) {
+        return $image_url;
+    }
+
+    // Strip -scaled suffix if present (WordPress adds this to large images)
+    $filename = preg_replace('/-scaled$/', '', $filename);
+
+    // Build base path to check for thumbnails
+    $upload_dir = wp_upload_dir();
+    $base_path = $upload_dir['basedir'] . str_replace('/wp-content/uploads', '', $dirname);
+
+    // Look for existing thumbnail with this width (any height, prefer .avif)
+    $pattern = $base_path . '/' . $filename . '-' . $width . 'x*';
+    $matches = glob($pattern . '.avif');
+    if (empty($matches)) {
+        $matches = glob($pattern . '.' . $extension);
+    }
+
+    if (!empty($matches)) {
+        // Use the first match
+        $thumb_filename = basename($matches[0]);
+        $base_url = preg_replace('#/wp-content/.*$#', '', $image_url);
+        return $base_url . $dirname . '/' . $thumb_filename;
+    }
+
+    // Fallback to original
+    return $image_url;
+}
+
 // Initialize plugin
 WatchSpotting::get_instance();

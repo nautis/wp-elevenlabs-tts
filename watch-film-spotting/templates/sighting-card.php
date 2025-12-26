@@ -14,7 +14,7 @@ if (!defined('ABSPATH')) {
     <?php if ($sighting->image_url): ?>
     <div class="ws-card-image">
         <a href="<?php echo esc_url(add_query_arg('ws_sighting', $sighting->faw_id, get_permalink())); ?>">
-            <img src="<?php echo esc_url($sighting->image_url); ?>" 
+            <img src="<?php echo esc_url(ws_get_thumbnail_url($sighting->image_url, 768)); ?>"
                  alt="<?php echo esc_attr($sighting->get_title()); ?>"
                  loading="lazy">
         </a>

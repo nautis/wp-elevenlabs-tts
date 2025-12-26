@@ -197,12 +197,6 @@
 
         html += '</div>';
         container.innerHTML = html;
-
-        // Execute any scripts in the inserted HTML (needed for ReGallery)
-        executeScriptsInElement(container);
-
-        // Initialize ReGallery elements after scripts have run
-        setTimeout(initReGalleries, 100);
     }
 
     /**
@@ -238,12 +232,6 @@
         html += '</div></div>';
 
         container.innerHTML = html;
-
-        // Execute any scripts in the inserted HTML (needed for ReGallery)
-        executeScriptsInElement(container);
-
-        // Initialize ReGallery elements after scripts have run
-        setTimeout(initReGalleries, 100);
     }
 
     /**
@@ -900,87 +888,122 @@
     }
 
     /**
+     * Initialize justified gallery layout
+     * Creates justified rows with consistent height (300px) for multi-image galleries
+     * Uses 16:9 aspect ratio for single-image galleries
+     */
+    function initJustifiedGalleries() {
+        const galleries = document.querySelectorAll('.fwd-justified-gallery .gallery');
+
+        galleries.forEach(function(gallery) {
+            const items = gallery.querySelectorAll('.gallery-item');
+            if (items.length === 0) return;
+
+            // Single image: use 16:9 aspect ratio
+            if (items.length === 1) {
+                gallery.classList.add('fwd-single-image');
+                gallery.classList.remove('fwd-multi-image');
+                return; // CSS handles single image display
+            }
+
+            // Multiple images: use justified layout
+            gallery.classList.add('fwd-multi-image');
+            gallery.classList.remove('fwd-single-image');
+
+            const rowHeight = 300; // Target row height in pixels
+            const gap = 2; // Gap between images in pixels
+            const containerWidth = gallery.offsetWidth;
+
+            let currentRow = [];
+            let currentRowWidth = 0;
+
+            // Load all images first
+            const images = Array.from(items).map(function(item) {
+                const img = item.querySelector('img');
+                return {
+                    element: item,
+                    img: img,
+                    aspectRatio: img.naturalWidth / img.naturalHeight || 1.5,
+                    width: 0
+                };
+            });
+
+            // Process images into justified rows
+            images.forEach(function(imgData, index) {
+                const idealWidth = rowHeight * imgData.aspectRatio;
+                currentRow.push(imgData);
+                currentRowWidth += idealWidth;
+
+                // Check if we should complete this row
+                const isLastImage = index === images.length - 1;
+                const rowIsFull = currentRowWidth >= containerWidth;
+
+                if (rowIsFull || isLastImage) {
+                    // Calculate scale factor to fit row perfectly
+                    const totalGaps = (currentRow.length - 1) * gap;
+                    const availableWidth = containerWidth - totalGaps;
+                    const scale = availableWidth / currentRowWidth;
+
+                    // Apply widths to items in this row
+                    currentRow.forEach(function(item, i) {
+                        const scaledWidth = rowHeight * item.aspectRatio * scale;
+                        item.element.style.flexGrow = '0';
+                        item.element.style.flexShrink = '0';
+                        item.element.style.flexBasis = scaledWidth + 'px';
+                        item.element.style.width = scaledWidth + 'px';
+                    });
+
+                    // Reset for next row
+                    currentRow = [];
+                    currentRowWidth = 0;
+                }
+            });
+        });
+    }
+
+    /**
+     * Wait for all images to load before justifying
+     */
+    function waitForImagesToLoad(gallery) {
+        const images = gallery.querySelectorAll('img');
+        const promises = Array.from(images).map(function(img) {
+            return new Promise(function(resolve) {
+                if (img.complete) {
+                    resolve();
+                } else {
+                    img.addEventListener('load', resolve);
+                    img.addEventListener('error', resolve); // Resolve even on error
+                }
+            });
+        });
+
+        return Promise.all(promises);
+    }
+
+    /**
      * Initialize on document ready
      */
     $(document).ready(function() {
         initSearch();
         initAddForm();
         initTabs();
-    });
 
-
-    /**
-     * Execute script tags in dynamically inserted HTML
-     * Needed for ReGallery which uses inline scripts for React initialization
-     */
-    function executeScriptsInElement(element) {
-        const scripts = element.querySelectorAll('script');
-        scripts.forEach(function(oldScript) {
-            const newScript = document.createElement('script');
-
-            // Copy attributes
-            Array.from(oldScript.attributes).forEach(function(attr) {
-                newScript.setAttribute(attr.name, attr.value);
+        // Initialize justified galleries after images load
+        const justifiedGalleries = document.querySelectorAll('.fwd-justified-gallery .gallery');
+        justifiedGalleries.forEach(function(gallery) {
+            waitForImagesToLoad(gallery).then(function() {
+                initJustifiedGalleries();
             });
-
-            // Copy inline script content
-            newScript.textContent = oldScript.textContent;
-
-            // Replace old script with new one to execute it
-            oldScript.parentNode.replaceChild(newScript, oldScript);
         });
 
-        // Trigger ReGallery re-initialization if available
-        if (typeof window.reacg_init === 'function') {
-            window.reacg_init();
-        }
-    }
+        // Re-calculate on window resize
+        let resizeTimeout;
+        window.addEventListener('resize', function() {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                initJustifiedGalleries();
+            }, 250);
+        });
+    });
 
 })(jQuery);
-
-/**
- * Initialize any uninitialized ReGallery elements
- * ReGallery uses React and only initializes on page load.
- * This function manually triggers initialization for dynamically added galleries.
- */
-function initReGalleries() {
-    // Find all reacg-gallery elements that haven't been initialized yet
-    const galleries = document.querySelectorAll('.reacg-gallery:not([data-initialized])');
-    
-    if (galleries.length === 0) return;
-    
-    // ReGallery stores its init function - we need to click the hidden loadApp button
-    // for each new gallery to trigger React initialization
-    galleries.forEach(function(gallery) {
-        const galleryId = gallery.id; // e.g., "reacg-root7567"
-        
-        // Mark as attempting initialization
-        gallery.setAttribute('data-initialized', 'pending');
-        
-        // Execute any inline scripts that set up reacg_data
-        const scripts = gallery.parentElement?.querySelectorAll('script');
-        scripts?.forEach(function(script) {
-            if (script.textContent.includes('reacg_data')) {
-                try {
-                    // Create and execute a new script with the same content
-                    const newScript = document.createElement('script');
-                    newScript.textContent = script.textContent;
-                    document.head.appendChild(newScript);
-                    document.head.removeChild(newScript);
-                } catch (e) {
-                    console.warn('FWD: Error executing reacg_data script', e);
-                }
-            }
-        });
-        
-        // Try to use ReGallery's internal init function
-        // The loadApp button triggers ie() which does createRoot().render()
-        const loadAppBtn = document.getElementById('reacg-loadApp');
-        if (loadAppBtn) {
-            // Set the data-id to target this specific gallery
-            loadAppBtn.setAttribute('data-id', galleryId);
-            loadAppBtn.click();
-            gallery.setAttribute('data-initialized', 'true');
-        }
-    });
-}

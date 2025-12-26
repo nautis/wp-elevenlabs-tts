@@ -243,50 +243,6 @@ function fwd_update_record($faw_id, $data) {
             array('faw_id' => $faw_id)
         );
 
-        // Create or update RegGallery post if gallery_ids is available
-        $gallery_ids_to_use = isset($update_data['gallery_ids']) ? $update_data['gallery_ids'] : null;
-        if ($gallery_ids_to_use) {
-            $gallery_ids_array = json_decode($gallery_ids_to_use, true);
-            if (is_array($gallery_ids_array) && !empty($gallery_ids_array) && function_exists('fwd_create_regallery_post')) {
-                // Get existing regallery_id from database
-                $existing_entry = $wpdb->get_row($wpdb->prepare(
-                    "SELECT regallery_id FROM {$table_film_actor_watch} WHERE faw_id = %d",
-                    $faw_id
-                ), ARRAY_A);
-
-                $existing_regallery_id = !empty($existing_entry['regallery_id']) ? $existing_entry['regallery_id'] : null;
-
-                // Prepare entry data for RegGallery post creation
-                $entry_data = array(
-                    'brand' => $data['brand'],
-                    'model' => $data['model'],
-                    'title' => $data['film'],
-                    'year' => $data['year'],
-                    'actor' => $data['actor']
-                );
-
-                // Create or update RegGallery post
-                $regallery_id = fwd_create_regallery_post($gallery_ids_array, $entry_data, $existing_regallery_id);
-
-                if ($regallery_id) {
-                    // Update the entry with regallery_id
-                    $wpdb->update(
-                        $table_film_actor_watch,
-                        array('regallery_id' => $regallery_id),
-                        array('faw_id' => $faw_id)
-                    );
-
-                    // Create wp_options cache entry
-                    $correct_options = file_get_contents('/tmp/correct-regallery-options.json');
-                    if ($correct_options) {
-                        update_option('reacg_options' . $regallery_id, $correct_options, false);
-                    }
-
-                    error_log("FWD Admin: Created/updated RegGallery post #{$regallery_id} for faw_id {$faw_id}");
-                }
-            }
-        }
-
         $wpdb->query('COMMIT');
 
         // Update the search index table to reflect changes
@@ -303,11 +259,6 @@ function fwd_update_record($faw_id, $data) {
             'confidence_level' => $data['confidence_level'],
             'source_url' => $data['source_url']
         );
-
-        // Add regallery_id to search index if it was created
-        if (isset($regallery_id) && $regallery_id) {
-            $search_update_data['regallery_id'] = $regallery_id;
-        }
 
         $wpdb->update(
             $table_search_index,
@@ -1980,57 +1931,50 @@ Sean Connery|James Bond|Rolex|Submariner 6538|Dr. No|1962|Bond's iconic watch|ht
             <h3>Available Shortcodes:</h3>
 
             <h4>[film_watch_search]</h4>
-            <p>Display a search form for the database.</p>
+            <p>Display a search form for the database with unified search functionality.</p>
             <code>[film_watch_search]</code>
             <p><strong>Parameters:</strong></p>
             <ul>
-                <li><code>type</code> - Search type: "all", "actor", "brand", or "film" (default: "all")</li>
-                <li><code>placeholder</code> - Custom placeholder text</li>
+                <li><code>type</code> - Search type: "all" (default: "all")</li>
+                <li><code>placeholder</code> - Custom placeholder text (default: "Search movies, actors, or watch brands...")</li>
             </ul>
-            <p><strong>Example:</strong> <code>[film_watch_search type="actor" placeholder="Search for an actor..."]</code></p>
+            <p><strong>Example:</strong> <code>[film_watch_search placeholder="Search for an actor..."]</code></p>
+            <p><strong>Note:</strong> Supports server-side rendering for SEO when URL parameters are present.</p>
 
             <hr>
 
             <h4>[film_watch_stats]</h4>
-            <p>Display database statistics (film count, actor count, brand count, total entries).</p>
+            <p>Display database statistics showing counts of films, actors, brands, and watches.</p>
             <code>[film_watch_stats]</code>
             <p><strong>Parameters:</strong> None</p>
+            <p><strong>Output:</strong> Four-card grid displaying: Films, Actors, Brands, and Watches counts.</p>
 
             <hr>
 
-            <h4>[film_watch_top_brands]</h4>
-            <p>Display top watch brands list by film count.</p>
-            <code>[film_watch_top_brands]</code>
+            <h4>[film_watch_recently_added]</h4>
+            <p>Display three columns showing recently added watches, actors, and films.</p>
+            <code>[film_watch_recently_added]</code>
             <p><strong>Parameters:</strong></p>
             <ul>
-                <li><code>limit</code> - Number of brands to show (default: 10)</li>
-                <li><code>title</code> - Custom heading text (default: "Top Watch Brands")</li>
+                <li><code>limit</code> - Number of items to show per column (default: 10)</li>
             </ul>
-            <p><strong>Example:</strong> <code>[film_watch_top_brands limit="15" title="Most Featured Brands"]</code></p>
+            <p><strong>Example:</strong> <code>[film_watch_recently_added limit="15"]</code></p>
+            <p><strong>Note:</strong> Automatically hides when search is active on the page.</p>
 
             <hr>
 
-            <h4>[film_watch_actor name="Tom Cruise"]</h4>
-            <p>Display watches for a specific actor.</p>
-            <code>[film_watch_actor name="Tom Cruise"]</code>
-
-            <hr>
-
-            <h4>[film_watch_brand name="Rolex"]</h4>
-            <p>Display films featuring a specific watch brand.</p>
-            <code>[film_watch_brand name="Rolex"]</code>
-
-            <hr>
-
-            <h4>[film_watch_film title="Casino Royale"]</h4>
-            <p>Display watches featured in a specific film.</p>
-            <code>[film_watch_film title="Casino Royale"]</code>
-
-            <hr>
-
-            <h4>[film_watch_add]</h4>
-            <p>Display a form to add new entries (admin only).</p>
-            <code>[film_watch_add]</code>
+            <h4>[film_watch_alphabetical]</h4>
+            <p>Display alphabetical A-Z navigation for browsing films by first letter.</p>
+            <code>[film_watch_alphabetical]</code>
+            <p><strong>Parameters:</strong> None</p>
+            <p><strong>Functionality:</strong></p>
+            <ul>
+                <li>Displays A-Z navigation bar with clickable letters</li>
+                <li>When a letter is clicked, shows all films starting with that letter</li>
+                <li>Film links use the search functionality to display full details</li>
+                <li>Supports # for films starting with numbers/special characters</li>
+            </ul>
+            <p><strong>Note:</strong> Film links point to the current page using search parameters (<code>?type=all&q=...</code>).</p>
         </div>
         </div>
         <!-- End Tab 3: Shortcode Usage -->

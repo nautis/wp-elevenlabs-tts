@@ -24,14 +24,14 @@ $type_singular = [
 
 <div class="ws-browse ws-browse-<?php echo esc_attr($type); ?>">
 
-    <?php if ($value && $results): ?>
-    <!-- Showing results for selected value -->
+    <?php if ($display_name && $results): ?>
+    <!-- Showing results for selected item -->
     <header class="ws-browse-header">
-        <a href="<?php echo esc_url(remove_query_arg('ws_value')); ?>" class="ws-back-link">
+        <a href="<?php echo esc_url(remove_query_arg(['ws_film_id', 'ws_actor_id', 'ws_brand_id', 'ws_page'])); ?>" class="ws-back-link">
             &larr; All <?php echo esc_html($type_labels[$type]); ?>
         </a>
         <h2 class="ws-section-title">
-            <?php echo esc_html($value); ?>
+            <?php echo esc_html($display_name); ?>
             <span class="ws-count">(<?php echo (int) $results['total']; ?> sightings)</span>
         </h2>
     </header>
@@ -77,8 +77,8 @@ $type_singular = [
         $sort_name = preg_replace('/^(The|A|An)\s+/i', '', $name);
         $first_char = strtoupper(mb_substr($sort_name, 0, 1));
 
-        // Group numbers under #
-        if (is_numeric($first_char)) {
+        // Group numbers and non-alphabetic characters under #
+        if (!preg_match('/^[A-Z]$/', $first_char)) {
             $first_char = '#';
         }
 
@@ -88,10 +88,10 @@ $type_singular = [
         $grouped[$first_char][] = $item;
     }
 
-    // Sort groups alphabetically (# first, then A-Z)
+    // Sort groups alphabetically (A-Z, then #)
     uksort($grouped, function($a, $b) {
-        if ($a === '#') return -1;
-        if ($b === '#') return 1;
+        if ($a === '#') return 1;
+        if ($b === '#') return -1;
         return strcmp($a, $b);
     });
     ?>
@@ -104,16 +104,16 @@ $type_singular = [
             <?php
             if ($type === 'film') {
                 $label = $item->film_title . ' (' . $item->film_year . ')';
-                $url_value = $item->film_title;
+                $url_params = ['ws_browse' => $type, 'ws_film_id' => $item->film_id];
             } elseif ($type === 'actor') {
                 $label = $item->actor_name;
-                $url_value = $item->actor_name;
+                $url_params = ['ws_browse' => $type, 'ws_actor_id' => $item->actor_id];
             } else {
                 $label = $item->brand_name;
-                $url_value = $item->brand_name;
+                $url_params = ['ws_browse' => $type, 'ws_brand_id' => $item->brand_id];
             }
             ?>
-            <a href="<?php echo esc_url(add_query_arg(['ws_browse' => $type, 'ws_value' => $url_value], remove_query_arg(['ws_browse', 'ws_value']))); ?>" class="ws-browse-item">
+            <a href="<?php echo esc_url(add_query_arg($url_params, remove_query_arg(['ws_browse', 'ws_film_id', 'ws_actor_id', 'ws_brand_id']))); ?>" class="ws-browse-item">
                 <?php echo esc_html($label); ?>
             </a>
             <?php endforeach; ?>

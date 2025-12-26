@@ -32,7 +32,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('FWD_VERSION', '4.1.1');
+define('FWD_VERSION', '4.1.2');
 define('FWD_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('FWD_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('FWD_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -143,10 +143,18 @@ class Film_Watch_Database {
      * Enqueue frontend styles and scripts
      */
     public function enqueue_frontend_assets() {
+        // Google Fonts: Playfair Display, Source Sans 3, JetBrains Mono
+        wp_enqueue_style(
+            'fwd-google-fonts',
+            'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Playfair+Display:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap',
+            array(),
+            null
+        );
+
         wp_enqueue_style(
             'fwd-frontend',
             FWD_PLUGIN_URL . 'assets/css/frontend.css',
-            array(),
+            array('fwd-google-fonts'),
             FWD_VERSION
         );
 

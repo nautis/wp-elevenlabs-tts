@@ -1,3 +1,17 @@
+# studious-palm-tree
+
+WordPress plugins for tellingtime.com.
+
+## Plugins
+
+### ElevenLabs TTS (Active)
+Text-to-speech plugin using ElevenLabs API. See details below.
+
+### watch-film-spotting / film-watch-database (Deprecated)
+These plugins have been merged into a unified `watch-spotting` plugin deployed directly on the server. The code here is kept for reference but is no longer actively maintained in this repo.
+
+---
+
 # ElevenLabs Text-to-Speech WordPress Plugin
 
 Convert your WordPress blog posts into high-quality audio using ElevenLabs AI text-to-speech technology.

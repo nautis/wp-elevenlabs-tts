@@ -76,6 +76,9 @@ class WS_Sighting_Repository {
             'actor' => '',
             'film' => '',
             'brand' => '',
+            'actor_id' => null,
+            'film_id' => null,
+            'brand_id' => null,
             'year' => null,
             'per_page' => 21,
             'page' => 1,
@@ -119,7 +122,25 @@ class WS_Sighting_Repository {
             $where[] = 's.brand_name LIKE %s';
             $values[] = '%' . $wpdb->esc_like($args['brand']) . '%';
         }
-        
+
+        // Filter by actor_id (direct lookup)
+        if ($args['actor_id']) {
+            $where[] = 's.actor_id = %d';
+            $values[] = $args['actor_id'];
+        }
+
+        // Filter by film_id (direct lookup)
+        if ($args['film_id']) {
+            $where[] = 's.film_id = %d';
+            $values[] = $args['film_id'];
+        }
+
+        // Filter by brand_id (direct lookup)
+        if ($args['brand_id']) {
+            $where[] = 's.brand_id = %d';
+            $values[] = $args['brand_id'];
+        }
+
         // Filter by year
         if ($args['year']) {
             $where[] = 's.film_year = %d';
@@ -222,10 +243,10 @@ class WS_Sighting_Repository {
         $table = ws_table(WS_TABLE_SEARCH_INDEX);
 
         return $wpdb->get_results(
-            "SELECT actor_name, COUNT(*) as count
+            "SELECT actor_id, actor_name, COUNT(*) as count
             FROM $table
             WHERE deleted_at IS NULL
-            GROUP BY actor_name
+            GROUP BY actor_id, actor_name
             ORDER BY actor_name ASC"
         );
     }
@@ -238,10 +259,10 @@ class WS_Sighting_Repository {
         $table = ws_table(WS_TABLE_SEARCH_INDEX);
 
         return $wpdb->get_results(
-            "SELECT brand_name, COUNT(*) as count
+            "SELECT brand_id, brand_name, COUNT(*) as count
             FROM $table
             WHERE deleted_at IS NULL
-            GROUP BY brand_name
+            GROUP BY brand_id, brand_name
             ORDER BY brand_name ASC"
         );
     }
@@ -254,11 +275,35 @@ class WS_Sighting_Repository {
         $table = ws_table(WS_TABLE_SEARCH_INDEX);
 
         return $wpdb->get_results(
-            "SELECT film_title, film_year, COUNT(*) as count
+            "SELECT film_id, film_title, film_year, COUNT(*) as count
             FROM $table
             WHERE deleted_at IS NULL
-            GROUP BY film_title, film_year
+            GROUP BY film_id, film_title, film_year
             ORDER BY film_title ASC, film_year ASC"
         );
+    }
+
+    /**
+     * Get sightings by actor ID
+     */
+    public static function get_by_actor_id($actor_id, $args = []) {
+        $args['actor_id'] = $actor_id;
+        return self::search($args);
+    }
+
+    /**
+     * Get sightings by film ID
+     */
+    public static function get_by_film_id($film_id, $args = []) {
+        $args['film_id'] = $film_id;
+        return self::search($args);
+    }
+
+    /**
+     * Get sightings by brand ID
+     */
+    public static function get_by_brand_id($brand_id, $args = []) {
+        $args['brand_id'] = $brand_id;
+        return self::search($args);
     }
 }
