@@ -138,7 +138,116 @@
     margin: 10px 0;
 }
 
-/* Responsive adjustments */
+/* ==========================================================================
+   Synchronized Transcript Styles
+   ========================================================================== */
+
+.elevenlabs-sync-transcript-wrapper {
+    margin-top: 15px;
+}
+
+.elevenlabs-sync-toggle {
+    background: transparent;
+    border: 1px solid #dee2e6;
+    color: #666;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.elevenlabs-sync-toggle:hover {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+    color: #333;
+}
+
+.elevenlabs-sync-toggle[aria-expanded="true"] {
+    background: #e9ecef;
+    border-color: #adb5bd;
+}
+
+.elevenlabs-sync-transcript {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out, padding 0.3s ease-out;
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-top: 10px;
+    font-size: 15px;
+    line-height: 1.8;
+    color: #333;
+}
+
+.elevenlabs-sync-transcript.expanded {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+/* Word styling */
+.elevenlabs-word {
+    display: inline;
+    padding: 2px 0;
+    border-radius: 3px;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    cursor: pointer;
+}
+
+.elevenlabs-word:hover {
+    background-color: #e9ecef;
+}
+
+/* Active word highlighting */
+.elevenlabs-word-active {
+    background-color: #ffc107;
+    color: #000;
+    padding: 2px 4px;
+    margin: 0 -4px;
+    border-radius: 3px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+/* Alternative highlight style - blue */
+.elevenlabs-sync-transcript.highlight-blue .elevenlabs-word-active {
+    background-color: #007bff;
+    color: #fff;
+}
+
+/* Scrollbar styling for transcript */
+.elevenlabs-sync-transcript::-webkit-scrollbar {
+    width: 8px;
+}
+
+.elevenlabs-sync-transcript::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.elevenlabs-sync-transcript::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+.elevenlabs-sync-transcript::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}
+
+/* Playing state indicator */
+.elevenlabs-sync-transcript.playing {
+    border-color: #007bff;
+    box-shadow: 0 0 0 1px rgba(0, 123, 255, 0.25);
+}
+
+/* ==========================================================================
+   Responsive adjustments
+   ========================================================================== */
+
 @media (max-width: 768px) {
     .elevenlabs-player {
         flex-direction: column;
@@ -157,5 +266,16 @@
     .elevenlabs-generate-btn {
         width: 100%;
         margin-top: 10px;
+    }
+
+    .elevenlabs-sync-transcript.expanded {
+        max-height: 200px;
+        padding: 15px;
+        font-size: 14px;
+    }
+
+    .elevenlabs-sync-toggle {
+        width: 100%;
+        justify-content: center;
     }
 }

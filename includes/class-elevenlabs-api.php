@@ -398,4 +398,195 @@ class ElevenLabs_TTS_API {
 
         return $response;
     }
+
+    /**
+     * Convert text to speech with timestamps
+     * Returns both audio data and character-level timing information
+     *
+     * @param string $text     The text to convert.
+     * @param string $voice_id The voice ID to use.
+     * @param array  $options  Additional options.
+     * @return array|WP_Error Array with 'audio' and 'alignment' keys, or error.
+     */
+    public function text_to_speech_with_timestamps( $text, $voice_id, $options = array() ) {
+        if ( empty( $this->api_key ) ) {
+            return new WP_Error( 'no_api_key', __( 'ElevenLabs API key is not configured', 'elevenlabs-tts' ) );
+        }
+
+        if ( empty( $voice_id ) ) {
+            return new WP_Error( 'no_voice_id', __( 'Voice ID is required', 'elevenlabs-tts' ) );
+        }
+
+        // Default options.
+        $defaults = array(
+            'model_id'                          => 'eleven_multilingual_v2',
+            'voice_settings'                    => array(
+                'stability'         => 0.5,
+                'similarity_boost'  => 0.75,
+                'style'             => 0.0,
+                'use_speaker_boost' => true,
+            ),
+            'output_format'                     => 'mp3_44100_128',
+            'pronunciation_dictionary_locators' => array(),
+        );
+
+        $options = wp_parse_args( $options, $defaults );
+
+        // Prepare request body.
+        $body = array(
+            'text'                     => $text,
+            'model_id'                 => $options['model_id'],
+            'voice_settings'           => $options['voice_settings'],
+            'apply_text_normalization' => 'off', // Disable normalization for exact timestamp matching
+        );
+
+        // Add pronunciation dictionary if provided.
+        if ( ! empty( $options['pronunciation_dictionary_locators'] ) ) {
+            $body['pronunciation_dictionary_locators'] = $options['pronunciation_dictionary_locators'];
+        }
+
+        // Build endpoint with output format.
+        $endpoint = "/text-to-speech/{$voice_id}/with-timestamps";
+        $endpoint .= '?output_format=' . $options['output_format'];
+
+        $url = $this->base_url . $endpoint;
+
+        $args = array(
+            'method'  => 'POST',
+            'headers' => array(
+                'xi-api-key'   => $this->api_key,
+                'Content-Type' => 'application/json',
+            ),
+            'body'    => wp_json_encode( $body ),
+            'timeout' => 180,
+        );
+
+        $response = wp_remote_request( $url, $args );
+
+        if ( is_wp_error( $response ) ) {
+            return $response;
+        }
+
+        $status_code   = wp_remote_retrieve_response_code( $response );
+        $response_body = wp_remote_retrieve_body( $response );
+
+        // Handle errors.
+        if ( $status_code < 200 || $status_code >= 300 ) {
+            $error_data    = json_decode( $response_body, true );
+            $error_message = isset( $error_data['detail']['message'] )
+                ? $error_data['detail']['message']
+                : ( isset( $error_data['detail'] ) && is_string( $error_data['detail'] )
+                    ? $error_data['detail']
+                    : sprintf( __( 'API request failed with status %d', 'elevenlabs-tts' ), $status_code ) );
+
+            return new WP_Error( 'api_error', $error_message, array( 'status' => $status_code ) );
+        }
+
+        // Decode JSON response.
+        $data = json_decode( $response_body, true );
+
+        if ( json_last_error() !== JSON_ERROR_NONE ) {
+            return new WP_Error( 'json_error', __( 'Failed to decode API response', 'elevenlabs-tts' ) );
+        }
+
+        // Validate response structure.
+        if ( ! isset( $data['audio_base64'] ) || ! isset( $data['alignment'] ) ) {
+            return new WP_Error( 'invalid_response', __( 'Invalid response structure from timestamps API', 'elevenlabs-tts' ) );
+        }
+
+        // Decode audio from base64.
+        $audio_data = base64_decode( $data['audio_base64'] );
+
+        if ( false === $audio_data ) {
+            return new WP_Error( 'decode_error', __( 'Failed to decode audio data', 'elevenlabs-tts' ) );
+        }
+
+        // Convert character-level timestamps to word-level.
+        $word_timestamps = $this->convert_to_word_timestamps( $data['alignment'] );
+
+        return array(
+            'audio'      => $audio_data,
+            'alignment'  => $data['alignment'],
+            'words'      => $word_timestamps,
+        );
+    }
+
+    /**
+     * Convert character-level timestamps to word-level timestamps
+     *
+     * @param array $alignment Character-level alignment data from API.
+     * @return array Word-level timestamps.
+     */
+    private function convert_to_word_timestamps( $alignment ) {
+        $words = array();
+        $current_word = '';
+        $word_start = null;
+        $word_end = null;
+
+        $characters = $alignment['characters'];
+        $start_times = $alignment['character_start_times_seconds'];
+        $end_times = $alignment['character_end_times_seconds'];
+
+        for ( $i = 0; $i < count( $characters ); $i++ ) {
+            $char = $characters[ $i ];
+            $start = $start_times[ $i ];
+            $end = $end_times[ $i ];
+
+            // Check if this is a word boundary (space or punctuation at end).
+            if ( $char === ' ' || $char === "\n" || $char === "\r" || $char === "\t" ) {
+                // End current word if we have one.
+                if ( ! empty( $current_word ) && null !== $word_start ) {
+                    $words[] = array(
+                        'word'  => $this->sanitize_word_for_json( $current_word ),
+                        'start' => $word_start,
+                        'end'   => $word_end,
+                    );
+                }
+                $current_word = '';
+                $word_start = null;
+                $word_end = null;
+            } else {
+                // Add character to current word.
+                if ( null === $word_start ) {
+                    $word_start = $start;
+                }
+                $current_word .= $char;
+                $word_end = $end;
+            }
+        }
+
+        // Don't forget the last word.
+        if ( ! empty( $current_word ) && null !== $word_start ) {
+            $words[] = array(
+                'word'  => $this->sanitize_word_for_json( $current_word ),
+                'start' => $word_start,
+                'end'   => $word_end,
+            );
+        }
+
+        return $words;
+    }
+
+    /**
+     * Sanitize word text for safe JSON encoding
+     * Replaces curly/smart quotes with straight quotes to prevent JSON parsing errors
+     *
+     * @param string $word The word to sanitize.
+     * @return string Sanitized word.
+     */
+    private function sanitize_word_for_json( $word ) {
+        // Replace curly/smart quotes with straight quotes
+        $replacements = array(
+            "\xE2\x80\x9C" => '"',  // Left double quotation mark "
+            "\xE2\x80\x9D" => '"',  // Right double quotation mark "
+            "\xE2\x80\x98" => "'",  // Left single quotation mark '
+            "\xE2\x80\x99" => "'",  // Right single quotation mark '
+            "\xE2\x80\x9E" => '"',  // Double low-9 quotation mark „
+            "\xE2\x80\x9F" => '"',  // Double high-reversed-9 quotation mark ‟
+            "\xE2\x80\x9A" => "'",  // Single low-9 quotation mark ‚
+            "\xE2\x80\x9B" => "'",  // Single high-reversed-9 quotation mark ‛
+        );
+
+        return strtr( $word, $replacements );
+    }
 }

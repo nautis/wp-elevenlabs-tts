@@ -97,6 +97,12 @@ class ElevenLabs_TTS_Audio_Generator {
         error_log("ElevenLabs TTS: Generating audio for post {$post_id}");
         error_log("Content length: " . strlen($content) . " characters");
 
+        // Check if synchronized highlighting is enabled
+        $enable_sync = isset($this->settings['enable_sync_highlight']) ? (bool)$this->settings['enable_sync_highlight'] : true;
+
+        // Initialize word timestamps array
+        $all_word_timestamps = array();
+
         // Check if content exceeds the API limit
         // Using 5000 chars per chunk for faster processing and better reliability
         $max_chars = 5000; // Smaller chunks = faster generation, less timeout risk
@@ -105,22 +111,37 @@ class ElevenLabs_TTS_Audio_Generator {
             $chunks = $this->split_text_into_chunks($content, $max_chars);
             error_log("ElevenLabs TTS: Split into " . count($chunks) . " chunks");
 
-            $audio_data = $this->generate_and_combine_chunks($chunks, $voice_id, $options, $post_id);
+            $result = $this->generate_and_combine_chunks_with_timestamps($chunks, $voice_id, $options, $post_id, $enable_sync);
 
-            if (is_wp_error($audio_data)) {
-                error_log("ElevenLabs TTS Error: " . $audio_data->get_error_message());
-                return $audio_data;
+            if (is_wp_error($result)) {
+                error_log("ElevenLabs TTS Error: " . $result->get_error_message());
+                return $result;
             }
+
+            $audio_data = $result['audio'];
+            $all_word_timestamps = $result['words'];
 
             // Save combined audio file
             $file_url = $this->save_audio_file($audio_data, $post_id);
         } else {
             // Generate audio for single chunk
-            $audio_data = $this->api->text_to_speech($content, $voice_id, $options);
+            if ($enable_sync) {
+                $result = $this->api->text_to_speech_with_timestamps($content, $voice_id, $options);
 
-            if (is_wp_error($audio_data)) {
-                error_log("ElevenLabs TTS Error: " . $audio_data->get_error_message());
-                return $audio_data;
+                if (is_wp_error($result)) {
+                    error_log("ElevenLabs TTS Error: " . $result->get_error_message());
+                    return $result;
+                }
+
+                $audio_data = $result['audio'];
+                $all_word_timestamps = $result['words'];
+            } else {
+                $audio_data = $this->api->text_to_speech($content, $voice_id, $options);
+
+                if (is_wp_error($audio_data)) {
+                    error_log("ElevenLabs TTS Error: " . $audio_data->get_error_message());
+                    return $audio_data;
+                }
             }
 
             // Save audio file
@@ -150,6 +171,18 @@ class ElevenLabs_TTS_Audio_Generator {
         // Estimate and save duration
         $estimated_duration = ElevenLabs_TTS_Content_Filter::estimate_duration($content);
         update_post_meta($post_id, '_elevenlabs_estimated_duration', $estimated_duration);
+
+        // Save word timestamps for synchronized highlighting
+        if (!empty($all_word_timestamps)) {
+            // Store as JSON in post meta
+            update_post_meta($post_id, '_elevenlabs_word_timestamps', wp_json_encode($all_word_timestamps));
+            error_log("ElevenLabs TTS: Saved " . count($all_word_timestamps) . " word timestamps");
+        } else {
+            delete_post_meta($post_id, '_elevenlabs_word_timestamps');
+        }
+
+        // Save the plain text content for frontend highlighting
+        update_post_meta($post_id, '_elevenlabs_tts_content', $content);
 
         error_log("ElevenLabs TTS: Audio generated successfully for post {$post_id}");
 
@@ -215,6 +248,8 @@ class ElevenLabs_TTS_Audio_Generator {
         delete_post_meta($post_id, '_elevenlabs_content_hash');
         delete_post_meta($post_id, '_elevenlabs_character_count');
         delete_post_meta($post_id, '_elevenlabs_estimated_duration');
+        delete_post_meta($post_id, '_elevenlabs_word_timestamps');
+        delete_post_meta($post_id, '_elevenlabs_tts_content');
 
         return true;
     }
@@ -262,6 +297,9 @@ class ElevenLabs_TTS_Audio_Generator {
             return null;
         }
 
+        $word_timestamps_json = get_post_meta($post_id, '_elevenlabs_word_timestamps', true);
+        $has_timestamps = !empty($word_timestamps_json);
+
         return array(
             'url' => $audio_url,
             'file_path' => $file_path,
@@ -269,7 +307,8 @@ class ElevenLabs_TTS_Audio_Generator {
             'generated' => get_post_meta($post_id, '_elevenlabs_audio_generated', true),
             'character_count' => get_post_meta($post_id, '_elevenlabs_character_count', true),
             'estimated_duration' => get_post_meta($post_id, '_elevenlabs_estimated_duration', true),
-            'content_changed' => $this->has_content_changed($post_id)
+            'content_changed' => $this->has_content_changed($post_id),
+            'has_timestamps' => $has_timestamps,
         );
     }
 
@@ -421,6 +460,165 @@ class ElevenLabs_TTS_Audio_Generator {
         }
 
         return $combined_data;
+    }
+
+    /**
+     * Generate audio for multiple chunks with timestamps and combine them
+     *
+     * @param array $chunks Array of text chunks
+     * @param string $voice_id Voice ID
+     * @param array $options API options
+     * @param int $post_id Post ID for temp files
+     * @param bool $enable_sync Whether to request timestamps
+     * @return array|WP_Error Array with 'audio' and 'words' keys, or error
+     */
+    private function generate_and_combine_chunks_with_timestamps($chunks, $voice_id, $options, $post_id, $enable_sync = true) {
+        $upload_dir = wp_upload_dir();
+        $temp_dir = $upload_dir['basedir'] . '/elevenlabs-audio/temp';
+
+        // Create temp directory if needed
+        if (!file_exists($temp_dir)) {
+            wp_mkdir_p($temp_dir);
+        }
+
+        $temp_files = array();
+        $all_words = array();
+        $cumulative_duration = 0.0;
+        $chunk_num = 1;
+
+        // Generate audio for each chunk
+        foreach ($chunks as $chunk) {
+            error_log("ElevenLabs TTS: Generating chunk {$chunk_num} of " . count($chunks) . " (" . strlen($chunk) . " chars)");
+
+            if ($enable_sync) {
+                $result = $this->api->text_to_speech_with_timestamps($chunk, $voice_id, $options);
+
+                if (is_wp_error($result)) {
+                    // Cleanup temp files on error
+                    $this->cleanup_temp_files($temp_files);
+                    return $result;
+                }
+
+                $audio_data = $result['audio'];
+                $chunk_words = $result['words'];
+
+                // Offset timestamps by cumulative duration from previous chunks
+                foreach ($chunk_words as &$word) {
+                    $word['start'] += $cumulative_duration;
+                    $word['end'] += $cumulative_duration;
+                }
+                unset($word);
+
+                // Add to all words array
+                $all_words = array_merge($all_words, $chunk_words);
+            } else {
+                $audio_data = $this->api->text_to_speech($chunk, $voice_id, $options);
+
+                if (is_wp_error($audio_data)) {
+                    $this->cleanup_temp_files($temp_files);
+                    return $audio_data;
+                }
+            }
+
+            // Save chunk to temp file
+            $temp_file = $temp_dir . '/post-' . $post_id . '-chunk-' . $chunk_num . '-' . time() . '.mp3';
+            file_put_contents($temp_file, $audio_data);
+            $temp_files[] = $temp_file;
+
+            // Get the duration of this chunk's audio for offsetting next chunk's timestamps
+            $chunk_duration = $this->get_audio_duration($temp_file);
+            if ($chunk_duration > 0) {
+                $cumulative_duration += $chunk_duration;
+                error_log("ElevenLabs TTS: Chunk {$chunk_num} duration: {$chunk_duration}s, cumulative: {$cumulative_duration}s");
+            }
+
+            $chunk_num++;
+
+            // Small delay between chunks to avoid rate limiting
+            if ($chunk_num <= count($chunks)) {
+                sleep(1);
+            }
+        }
+
+        // Combine audio files
+        error_log("ElevenLabs TTS: Combining " . count($temp_files) . " audio chunks");
+        $combined_data = $this->combine_audio_files($temp_files);
+
+        // Cleanup temp files
+        $this->cleanup_temp_files($temp_files);
+
+        if (is_wp_error($combined_data)) {
+            return $combined_data;
+        }
+
+        return array(
+            'audio' => $combined_data,
+            'words' => $all_words,
+        );
+    }
+
+    /**
+     * Get audio duration using ffprobe
+     *
+     * @param string $file_path Path to audio file
+     * @return float Duration in seconds, or 0 on error
+     */
+    private function get_audio_duration($file_path) {
+        $ffprobe_paths = array(
+            '/usr/bin/ffprobe',
+            '/usr/local/bin/ffprobe',
+            '/opt/homebrew/bin/ffprobe',
+        );
+
+        $ffprobe = null;
+        foreach ($ffprobe_paths as $path) {
+            if (file_exists($path) && is_executable($path)) {
+                $ffprobe = $path;
+                break;
+            }
+        }
+
+        // Try 'which' as fallback
+        if (!$ffprobe) {
+            $output = array();
+            @exec('which ffprobe 2>/dev/null', $output);
+            if (!empty($output[0])) {
+                $ffprobe = $output[0];
+            }
+        }
+
+        if (!$ffprobe) {
+            error_log("ElevenLabs TTS: ffprobe not found, cannot get audio duration");
+            return 0;
+        }
+
+        $command = sprintf(
+            '%s -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 %s 2>/dev/null',
+            escapeshellarg($ffprobe),
+            escapeshellarg($file_path)
+        );
+
+        $output = array();
+        @exec($command, $output);
+
+        if (!empty($output[0])) {
+            return floatval($output[0]);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Cleanup temporary files
+     *
+     * @param array $files Array of file paths to delete
+     */
+    private function cleanup_temp_files($files) {
+        foreach ($files as $file) {
+            if (file_exists($file)) {
+                unlink($file);
+            }
+        }
     }
 
     /**

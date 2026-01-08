@@ -3,7 +3,7 @@
  * Plugin Name: ElevenLabs Text-to-Speech
  * Plugin URI: https://github.com/nautis/studious-palm-tree
  * Description: Convert blog posts to audio using ElevenLabs AI text-to-speech API
- * Version: 1.1.0
+ * Version: 1.2.5
  * Author: Your Name
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Define plugin constants.
-define( 'ELEVENLABS_TTS_VERSION', '1.1.0' );
+define( 'ELEVENLABS_TTS_VERSION', '1.2.5' );
 define( 'ELEVENLABS_TTS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'ELEVENLABS_TTS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -205,11 +205,23 @@ class ElevenLabs_TTS {
             true
         );
 
-        wp_localize_script( 'elevenlabs-tts-player', 'elevenlabsData', array(
+        // Prepare localization data.
+        $localize_data = array(
             'ajaxurl' => admin_url( 'admin-ajax.php' ),
             'nonce'   => wp_create_nonce( 'elevenlabs_tts_nonce' ),
             'postId'  => $post_id,
-        ) );
+        );
+
+        // Add word timestamps if available (for synchronized highlighting).
+        if ( $audio_url ) {
+            $word_timestamps = get_post_meta( $post_id, '_elevenlabs_word_timestamps', true );
+            if ( ! empty( $word_timestamps ) ) {
+                // Sanitize timestamps to fix any smart quotes that break JSON parsing.
+                $localize_data['wordTimestamps'] = $this->sanitize_timestamps_for_output( $word_timestamps );
+            }
+        }
+
+        wp_localize_script( 'elevenlabs-tts-player', 'elevenlabsData', $localize_data );
     }
 
     /**
@@ -428,6 +440,53 @@ class ElevenLabs_TTS {
         echo '<div class="elevenlabs-progress" style="display:none; margin-top:10px;">';
         echo '<span class="elevenlabs-status-text">' . esc_html__( 'Processing...', 'elevenlabs-tts' ) . '</span>';
         echo '</div>';
+    }
+
+    /**
+     * Sanitize word timestamps for safe JSON output
+     * Fixes smart/curly quotes and other characters that break JSON parsing
+     *
+     * @param string $timestamps_json JSON string of word timestamps.
+     * @return string Sanitized JSON string.
+     */
+    private function sanitize_timestamps_for_output( $timestamps_json ) {
+        // First, replace curly/smart quotes with straight quotes in the raw string
+        $replacements = array(
+            "\xE2\x80\x9C" => '"',  // Left double quotation mark "
+            "\xE2\x80\x9D" => '"',  // Right double quotation mark "
+            "\xE2\x80\x98" => "'",  // Left single quotation mark '
+            "\xE2\x80\x99" => "'",  // Right single quotation mark '
+            "\xE2\x80\x9E" => '"',  // Double low-9 quotation mark „
+            "\xE2\x80\x9F" => '"',  // Double high-reversed-9 quotation mark ‟
+            "\xE2\x80\x9A" => "'",  // Single low-9 quotation mark ‚
+            "\xE2\x80\x9B" => "'",  // Single high-reversed-9 quotation mark ‛
+        );
+        $timestamps_json = strtr( $timestamps_json, $replacements );
+
+        // Try to decode, sanitize word values, and re-encode to fix any broken JSON
+        $data = json_decode( $timestamps_json, true );
+        if ( json_last_error() === JSON_ERROR_NONE && is_array( $data ) ) {
+            // Data decoded successfully, re-encode to ensure proper escaping
+            return wp_json_encode( $data );
+        }
+
+        // If JSON is malformed, try regex-based fix for common issues
+        // Match "word":" followed by anything up to ","start" or ","end"
+        $fixed = preg_replace_callback(
+            '/"word":"(.*?)","(start|end)"/',
+            function( $matches ) {
+                $word = $matches[1];
+                $next_key = $matches[2];
+                // Strip any leading/trailing quote characters from the word
+                $word = trim( $word, '"\'' );
+                // Also remove any internal unescaped quotes
+                $word = str_replace( array( '"', "'" ), '', $word );
+                return '"word":"' . $word . '","' . $next_key . '"';
+            },
+            $timestamps_json
+        );
+
+        return $fixed ? $fixed : $timestamps_json;
     }
 }
 
