@@ -1,11 +1,26 @@
 /**
  * ElevenLabs TTS Admin JavaScript
+ *
+ * @package ElevenLabs_TTS
+ * @since 1.1.0
  */
 
 (function($) {
     'use strict';
 
-    $(document).ready(function() {
+    /**
+     * Escape HTML entities for safe display
+     *
+     * @param {string} text Text to escape
+     * @return {string} Escaped text
+     */
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    $(function() {
 
         // Update slider value displays in real-time
         $('#elevenlabs_stability').on('input', function() {
@@ -26,7 +41,10 @@
             var $status = $('#elevenlabs_connection_status');
             var apiKey = $('#elevenlabs_api_key').val();
 
-            if (!apiKey) {
+            // Check for existing saved key if field is empty
+            var hasExistingKey = $('#elevenlabs_api_key').data('has-key') === '1';
+
+            if (!apiKey && !hasExistingKey) {
                 $status.removeClass('success').addClass('error').text('Please enter an API key');
                 return;
             }
@@ -50,11 +68,13 @@
                     if (response.success) {
                         $status.removeClass('error').addClass('success').text(response.data.message);
                     } else {
+                        // Use .text() to prevent XSS
                         $status.removeClass('success').addClass('error').text('Error: ' + response.data.message);
                     }
                 },
                 error: function(xhr, status, error) {
                     $button.prop('disabled', false).removeClass('loading');
+                    // Use .text() to prevent XSS
                     $status.removeClass('success').addClass('error').text('Connection failed: ' + error);
                 }
             });
@@ -67,14 +87,17 @@
             var $voiceSelect = $('#elevenlabs_voice_id');
             var apiKey = $('#elevenlabs_api_key').val();
 
-            if (!apiKey) {
+            // Check for existing saved key if field is empty
+            var hasExistingKey = $('#elevenlabs_api_key').data('has-key') === '1';
+
+            if (!apiKey && !hasExistingKey) {
                 alert('Please enter an API key first');
                 return;
             }
 
             // Show loading state
             $button.prop('disabled', true).addClass('loading');
-            $voicesList.html('<p>Loading voices...</p>').addClass('loaded');
+            $voicesList.empty().append($('<p></p>').text('Loading voices...')).addClass('loaded');
 
             // Make AJAX request
             $.ajax({
@@ -99,13 +122,13 @@
                         $voicesList.empty();
 
                         if (voices.length === 0) {
-                            $voicesList.html('<p>No voices found in your account.</p>');
+                            $voicesList.append($('<p></p>').text('No voices found in your account.'));
                             return;
                         }
 
                         // Add voices to both select and visual list
                         voices.forEach(function(voice) {
-                            // Add to select dropdown
+                            // Add to select dropdown (using text() for safety)
                             var $option = $('<option></option>')
                                 .val(voice.voice_id)
                                 .text(voice.name);
@@ -133,6 +156,7 @@
                                 $voiceItem.addClass('selected');
                             }
 
+                            // Use .text() for all user-provided content
                             var $voiceName = $('<span class="elevenlabs-voice-name"></span>')
                                 .text(voice.name);
 
@@ -144,7 +168,10 @@
                             if (labels.length > 0) {
                                 var $labelsContainer = $('<div class="elevenlabs-voice-labels"></div>');
                                 labels.forEach(function(label) {
-                                    $labelsContainer.append('<span class="elevenlabs-voice-label">' + label + '</span>');
+                                    // Use .text() for label content
+                                    $labelsContainer.append(
+                                        $('<span class="elevenlabs-voice-label"></span>').text(label)
+                                    );
                                 });
                                 $voiceItem.append($labelsContainer);
                             }
@@ -168,12 +195,18 @@
                         var errorMsg = response.data && response.data.message
                             ? response.data.message
                             : 'Failed to fetch voices';
-                        $voicesList.html('<p class="elevenlabs-error-box">Error: ' + errorMsg + '</p>');
+                        // Use .text() to prevent XSS
+                        $voicesList.empty().append(
+                            $('<p class="elevenlabs-error-box"></p>').text('Error: ' + errorMsg)
+                        );
                     }
                 },
                 error: function(xhr, status, error) {
                     $button.prop('disabled', false).removeClass('loading');
-                    $voicesList.html('<p class="elevenlabs-error-box">Failed to fetch voices: ' + error + '</p>');
+                    // Use .text() to prevent XSS
+                    $voicesList.empty().append(
+                        $('<p class="elevenlabs-error-box"></p>').text('Failed to fetch voices: ' + error)
+                    );
                 }
             });
         });

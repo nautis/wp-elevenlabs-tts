@@ -1,11 +1,48 @@
 /**
  * ElevenLabs TTS Player JavaScript
+ *
+ * @package ElevenLabs_TTS
+ * @since 1.1.0
  */
 
 (function($) {
     'use strict';
 
-    $(document).ready(function() {
+    /**
+     * Helper function to show messages (XSS-safe)
+     *
+     * @param {jQuery} $container Container element
+     * @param {string} message Message text
+     * @param {string} type Message type ('success' or 'error')
+     */
+    function showMessage($container, message, type) {
+        var messageClass = type === 'success' ? 'elevenlabs-success' : 'elevenlabs-error';
+
+        // Use .text() instead of HTML to prevent XSS
+        var $message = $('<div></div>')
+            .addClass(messageClass)
+            .text(message);
+
+        // Remove any existing messages
+        $container.find('.elevenlabs-success, .elevenlabs-error').remove();
+
+        // Add new message
+        $container.append($message);
+
+        // Auto-remove error messages after 5 seconds
+        if (type === 'error') {
+            setTimeout(function() {
+                $message.fadeOut(function() {
+                    $(this).remove();
+                });
+            }, 5000);
+        }
+    }
+
+    /**
+     * Initialize on DOM ready
+     */
+    $(function() {
 
         // Handle generate button click
         $('.elevenlabs-generate-btn').on('click', function() {
@@ -37,7 +74,7 @@
                             location.href = location.href.split('?')[0] + '?t=' + Date.now();
                         }, 1000);
                     } else {
-                        // Show error message
+                        // Show error message (safely escaped by showMessage)
                         var errorMsg = response.data && response.data.message
                             ? response.data.message
                             : 'Failed to generate audio';
@@ -49,7 +86,7 @@
                     }
                 },
                 error: function(xhr, status, error) {
-                    // Show error message
+                    // Show error message (safely escaped by showMessage)
                     showMessage($container, 'An error occurred: ' + error, 'error');
 
                     // Re-enable button
@@ -72,7 +109,9 @@
             // Find or create progress container
             var $progress = $container.find('.elevenlabs-progress');
             if ($progress.length === 0) {
-                $progress = $('<div class="elevenlabs-progress"><span class="elevenlabs-spinner"></span><span class="elevenlabs-status-text">Generating audio...</span></div>');
+                $progress = $('<div class="elevenlabs-progress"></div>')
+                    .append($('<span class="elevenlabs-spinner"></span>'))
+                    .append($('<span class="elevenlabs-status-text"></span>').text('Generating audio...'));
                 $container.append($progress);
             }
 
@@ -100,7 +139,7 @@
                             location.href = location.href.split('?')[0] + '?t=' + Date.now();
                         }, 1000);
                     } else {
-                        // Show error message
+                        // Show error message (safely escaped by showMessage)
                         var errorMsg = response.data && response.data.message
                             ? response.data.message
                             : 'Failed to regenerate audio';
@@ -112,7 +151,7 @@
                     }
                 },
                 error: function(xhr, status, error) {
-                    // Show error message
+                    // Show error message (safely escaped by showMessage)
                     showMessage($container, 'An error occurred: ' + error, 'error');
 
                     // Re-enable button
@@ -120,35 +159,6 @@
                     $progress.hide();
                 }
             });
-        });
-
-        // Helper function to show messages
-        function showMessage($container, message, type) {
-            var messageClass = type === 'success' ? 'elevenlabs-success' : 'elevenlabs-error';
-            var $message = $('<div class="' + messageClass + '">' + message + '</div>');
-
-            // Remove any existing messages
-            $container.find('.elevenlabs-success, .elevenlabs-error').remove();
-
-            // Add new message
-            $container.append($message);
-
-            // Auto-remove error messages after 5 seconds
-            if (type === 'error') {
-                setTimeout(function() {
-                    $message.fadeOut(function() {
-                        $(this).remove();
-                    });
-                }, 5000);
-            }
-        }
-
-        // Track audio play events (optional analytics)
-        $('.elevenlabs-audio-element').on('play', function() {
-            var postId = elevenlabsData.postId;
-
-            // You can add analytics tracking here if needed
-            console.log('ElevenLabs audio played for post: ' + postId);
         });
 
         // Add keyboard accessibility
