@@ -1,18 +1,35 @@
-# studious-palm-tree
+# wp-elevenlabs-tts
 
-WordPress plugins for tellingtime.com.
-
-## Plugins
-
-### ElevenLabs TTS (Active)
-Text-to-speech plugin using ElevenLabs API. See details below.
-
-### watch-film-spotting / film-watch-database (Deprecated)
-These plugins have been merged into a unified `watch-spotting` plugin deployed directly on the server. The code here is kept for reference but is no longer actively maintained in this repo.
+> ## ⚠️ Deprecated — no longer maintained
+>
+> This WordPress plugin has been **retired** and replaced by a Ghost-native Node service.
+>
+> | Old | New |
+> |---|---|
+> | `wp-elevenlabs-tts` (this repo, WordPress plugin) | **`/opt/elevenlabs-voice/`** (Fastify service on the watchspotting server) |
+> | Targeted tellingtime.com when it was on WordPress | Targets tellingtime.com on Ghost |
+> | Last commit 2026-01-08 | Active service on `elevenlabs-voice.service` |
+>
+> The site this plugin was written for (tellingtime.com) migrated from WordPress to Ghost. TTS for Ghost posts is now handled by the standalone Node service, which integrates with Ghost's Audio Native and triggers voice generation for posts tagged `Review` or `History`.
+>
+> **Do not install or activate this plugin on a live WordPress site.** It carries known security findings (see the 2026-04-28 review attached to this repo's history) that will not be fixed because the code is no longer in use.
+>
+> The watchspotting.com WordPress install does not use TTS.
 
 ---
 
-# ElevenLabs Text-to-Speech WordPress Plugin
+## Historical context
+
+This repo originally held three plugins:
+
+- **ElevenLabs TTS** — text-to-speech for posts. **Retired** (replaced by `/opt/elevenlabs-voice/`).
+- **watch-film-spotting / film-watch-database** — merged into the unified `watch-spotting` plugin deployed directly on the server.
+
+The code is kept for reference only.
+
+---
+
+# ElevenLabs Text-to-Speech WordPress Plugin (archived documentation)
 
 Convert your WordPress blog posts into high-quality audio using ElevenLabs AI text-to-speech technology.
 
